@@ -30,7 +30,7 @@ index 463e26d..286e0d3 100644
      size_t getSize() const { return mSize; }
      ssize_t getOffset() const { return mOffset; }
 diff --git a/frameworks/native/include/gui/GLConsumer.h b/frameworks/native/include/gui/GLConsumer.h
-index a5fdfb9..f7abda4 100644
+index a5fdfb9..05e0217 100644
 --- a/frameworks/native/include/gui/GLConsumer.h
 +++ b/frameworks/native/include/gui/GLConsumer.h
 @@ -30,6 +30,11 @@
@@ -80,9 +80,9 @@ index a5fdfb9..f7abda4 100644
      // freeBufferLocked frees up the given buffer slot.  If the slot has been
      // initialized this will release the reference to the GraphicBuffer in that
      // slot and destroy the EGLImage in that slot.  Otherwise it has no effect.
-@@ -403,6 +422,18 @@ private:
-     // attachToContext is called.
-     EGLDisplay mEglDisplay;
+@@ -426,6 +445,18 @@ private:
+     // reset mCurrentTexture to INVALID_BUFFER_SLOT.
+     int mCurrentTexture;
  
 +#ifdef STE_HARDWARE
 +    // mBlitEngine is the handle to the copybit device which will be used in
@@ -96,9 +96,9 @@ index a5fdfb9..f7abda4 100644
 +    int mNextBlitSlot;
 +#endif
 +
-     // mEglContext is the OpenGL ES context with which this GLConsumer is
-     // currently associated.  It is initialized to EGL_NO_CONTEXT and gets set
-     // to the current GL context when updateTexImage is called for the first
+     // mAttached indicates whether the ConsumerBase is currently attached to
+     // an OpenGL ES context.  For legacy reasons, this is initialized to true,
+     // indicating that the ConsumerBase is considered to be attached to
 diff --git a/frameworks/native/include/media/openmax/OMX_IVCommon.h b/frameworks/native/include/media/openmax/OMX_IVCommon.h
 index 96a4396..b8e5f01 100644
 --- a/frameworks/native/include/media/openmax/OMX_IVCommon.h
@@ -229,7 +229,7 @@ index 5c82330..105c5df 100644
  }; // namespace android
  
 diff --git a/frameworks/native/libs/gui/Android.mk b/frameworks/native/libs/gui/Android.mk
-index 7957981..7803580 100644
+index 356ffd2..1714961 100644
 --- a/frameworks/native/libs/gui/Android.mk
 +++ b/frameworks/native/libs/gui/Android.mk
 @@ -39,6 +39,12 @@ LOCAL_SHARED_LIBRARIES := \
@@ -544,7 +544,7 @@ index 70d0e52..138f41e 100644
  
  EGL_ENTRY(EGLBoolean, eglHibernateProcessIMG, void)
 diff --git a/frameworks/native/services/surfaceflinger/Android.mk b/frameworks/native/services/surfaceflinger/Android.mk
-index e33daa2..a1af387 100644
+index 807c149..4535718 100644
 --- a/frameworks/native/services/surfaceflinger/Android.mk
 +++ b/frameworks/native/services/surfaceflinger/Android.mk
 @@ -52,6 +52,10 @@ ifeq ($(TARGET_FORCE_HWC_FOR_VIRTUAL_DISPLAYS),true)
@@ -586,18 +586,19 @@ index 5fa513c..69af894 100644
      int format;
      window->query(window, NATIVE_WINDOW_FORMAT, &format);
 diff --git a/frameworks/native/services/surfaceflinger/SurfaceFlinger.cpp b/frameworks/native/services/surfaceflinger/SurfaceFlinger.cpp
-index ea32595..a367c8d 100644
+index 2866abf..a2586cb 100644
 --- a/frameworks/native/services/surfaceflinger/SurfaceFlinger.cpp
 +++ b/frameworks/native/services/surfaceflinger/SurfaceFlinger.cpp
-@@ -2790,6 +2790,7 @@ status_t SurfaceFlinger::onTransact(
+@@ -2793,7 +2793,7 @@ status_t SurfaceFlinger::onTransact(
              const int pid = ipc->getCallingPid();
              const int uid = ipc->getCallingUid();
              if ((uid != AID_GRAPHICS) &&
-+                (uid != AID_SYSTEM) &&
+-#ifdef USE_MHEAP_SCREENSHOT
++#if defined(USE_MHEAP_SCREENSHOT) || defined(BOARD_EGL_NEEDS_LEGACY_FB)
+                  (uid != AID_SYSTEM) &&
+ #endif
                      !PermissionCache::checkPermission(sAccessSurfaceFlinger, pid, uid)) {
-                 ALOGE("Permission Denial: "
-                         "can't access SurfaceFlinger pid=%d, uid=%d", pid, uid);
-@@ -2927,6 +2928,9 @@ class GraphicProducerWrapper : public BBinder, public MessageHandler {
+@@ -2936,6 +2936,9 @@ class GraphicProducerWrapper : public BBinder, public MessageHandler {
      uint32_t code;
      Parcel const* data;
      Parcel* reply;
@@ -607,7 +608,7 @@ index ea32595..a367c8d 100644
  
      enum {
          MSG_API_CALL,
-@@ -2939,6 +2943,9 @@ class GraphicProducerWrapper : public BBinder, public MessageHandler {
+@@ -2948,6 +2951,9 @@ class GraphicProducerWrapper : public BBinder, public MessageHandler {
       */
      virtual status_t transact(uint32_t code,
              const Parcel& data, Parcel* reply, uint32_t flags) {
@@ -617,7 +618,7 @@ index ea32595..a367c8d 100644
          this->code = code;
          this->data = &data;
          this->reply = reply;
-@@ -2951,6 +2958,9 @@ class GraphicProducerWrapper : public BBinder, public MessageHandler {
+@@ -2960,6 +2966,9 @@ class GraphicProducerWrapper : public BBinder, public MessageHandler {
              looper->sendMessage(this, Message(MSG_API_CALL));
              barrier.wait();
          }
