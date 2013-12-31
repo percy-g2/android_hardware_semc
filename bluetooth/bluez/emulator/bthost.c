@@ -79,6 +79,7 @@ struct btconn {
 struct l2conn {
 	uint16_t scid;
 	uint16_t dcid;
+	uint16_t psm;
 	struct l2conn *next;
 };
 
@@ -87,6 +88,13 @@ struct l2cap_pending_req {
 	bthost_l2cap_rsp_cb cb;
 	void *user_data;
 	struct l2cap_pending_req *next;
+};
+
+struct l2cap_conn_cb_data {
+	uint16_t psm;
+	bthost_l2cap_connect_cb func;
+	void *user_data;
+	struct l2cap_conn_cb_data *next;
 };
 
 struct bthost {
@@ -100,7 +108,7 @@ struct bthost {
 	void *cmd_complete_data;
 	bthost_new_conn_cb new_conn_cb;
 	void *new_conn_data;
-	uint16_t server_psm;
+	struct l2cap_conn_cb_data *new_l2cap_conn_data;
 	struct l2cap_pending_req *l2reqs;
 };
 
@@ -153,22 +161,27 @@ static struct btconn *bthost_find_conn(struct bthost *bthost, uint16_t handle)
 	return NULL;
 }
 
-static void bthost_add_l2cap_conn(struct bthost *bthost, struct btconn *conn,
-						uint16_t scid, uint16_t dcid)
+static struct l2conn *bthost_add_l2cap_conn(struct bthost *bthost,
+						struct btconn *conn,
+						uint16_t scid, uint16_t dcid,
+						uint16_t psm)
 {
 	struct l2conn *l2conn;
 
 	l2conn = malloc(sizeof(*l2conn));
 	if (!l2conn)
-		return;
+		return NULL;
 
 	memset(l2conn, 0, sizeof(*l2conn));
 
+	l2conn->psm = psm;
 	l2conn->scid = scid;
 	l2conn->dcid = dcid;
 
 	l2conn->next = conn->l2conns;
 	conn->l2conns = l2conn;
+
+	return l2conn;
 }
 
 static struct l2conn *btconn_find_l2cap_conn_by_scid(struct btconn *conn,
@@ -184,15 +197,30 @@ static struct l2conn *btconn_find_l2cap_conn_by_scid(struct btconn *conn,
 	return NULL;
 }
 
+static struct l2cap_conn_cb_data *bthost_find_l2cap_cb_by_psm(
+					struct bthost *bthost, uint16_t psm)
+{
+	struct l2cap_conn_cb_data *cb;
+
+	for (cb = bthost->new_l2cap_conn_data; cb != NULL; cb = cb->next) {
+		if (cb->psm == psm)
+			return cb;
+	}
+
+	return NULL;
+}
+
 void bthost_destroy(struct bthost *bthost)
 {
-	struct cmd *cmd;
-
 	if (!bthost)
 		return;
 
-	for (cmd = bthost->cmd_q.tail; cmd != NULL; cmd = cmd->next)
+	while (bthost->cmd_q.tail) {
+		struct cmd *cmd = bthost->cmd_q.tail;
+
+		bthost->cmd_q.tail = cmd->next;
 		free(cmd);
+	}
 
 	while (bthost->conns) {
 		struct btconn *conn = bthost->conns;
@@ -207,6 +235,13 @@ void bthost_destroy(struct bthost *bthost)
 		bthost->l2reqs = req->next;
 		req->cb(0, NULL, 0, req->user_data);
 		free(req);
+	}
+
+	while (bthost->new_l2cap_conn_data) {
+		struct l2cap_conn_cb_data *cb = bthost->new_l2cap_conn_data;
+
+		bthost->new_l2cap_conn_data = cb->next;
+		free(cb);
 	}
 
 	free(bthost);
@@ -373,6 +408,15 @@ bool bthost_l2cap_req(struct bthost *bthost, uint16_t handle, uint8_t code,
 	conn = bthost_find_conn(bthost, handle);
 	if (!conn)
 		return false;
+
+	if (code == BT_L2CAP_PDU_CONN_REQ &&
+			len == sizeof(struct bt_l2cap_pdu_conn_req)) {
+		const struct bt_l2cap_pdu_conn_req *req = data;
+
+		bthost_add_l2cap_conn(bthost, conn, le16_to_cpu(req->scid),
+							le16_to_cpu(req->scid),
+							le16_to_cpu(req->psm));
+	}
 
 	ident = l2cap_sig_send(bthost, conn, code, 0, data, len);
 	if (!ident)
@@ -712,6 +756,7 @@ static bool l2cap_conn_req(struct bthost *bthost, struct btconn *conn,
 				uint8_t ident, const void *data, uint16_t len)
 {
 	const struct bt_l2cap_pdu_conn_req *req = data;
+	struct l2cap_conn_cb_data *cb_data;
 	struct bt_l2cap_pdu_conn_rsp rsp;
 	uint16_t psm;
 
@@ -723,7 +768,8 @@ static bool l2cap_conn_req(struct bthost *bthost, struct btconn *conn,
 	memset(&rsp, 0, sizeof(rsp));
 	rsp.scid = req->scid;
 
-	if (bthost->server_psm && bthost->server_psm == psm)
+	cb_data = bthost_find_l2cap_cb_by_psm(bthost, psm);
+	if (cb_data)
 		rsp.dcid = cpu_to_le16(conn->next_cid++);
 	else
 		rsp.result = cpu_to_le16(0x0002); /* PSM Not Supported */
@@ -733,15 +779,22 @@ static bool l2cap_conn_req(struct bthost *bthost, struct btconn *conn,
 
 	if (!rsp.result) {
 		struct bt_l2cap_pdu_config_req conf_req;
+		struct l2conn *l2conn;
 
-		bthost_add_l2cap_conn(bthost, conn, le16_to_cpu(rsp.dcid),
-							le16_to_cpu(rsp.scid));
+		l2conn = bthost_add_l2cap_conn(bthost, conn,
+							le16_to_cpu(rsp.dcid),
+							le16_to_cpu(rsp.scid),
+							le16_to_cpu(psm));
 
 		memset(&conf_req, 0, sizeof(conf_req));
 		conf_req.dcid = rsp.dcid;
 
 		l2cap_sig_send(bthost, conn, BT_L2CAP_PDU_CONFIG_REQ, 0,
 						&conf_req, sizeof(conf_req));
+
+		if (cb_data && l2conn->psm == cb_data->psm && cb_data->func)
+			cb_data->func(conn->handle, l2conn->dcid,
+							cb_data->user_data);
 	}
 
 	return true;
@@ -751,12 +804,16 @@ static bool l2cap_conn_rsp(struct bthost *bthost, struct btconn *conn,
 				uint8_t ident, const void *data, uint16_t len)
 {
 	const struct bt_l2cap_pdu_conn_rsp *rsp = data;
+	struct l2conn *l2conn;
 
 	if (len < sizeof(*rsp))
 		return false;
 
-	bthost_add_l2cap_conn(bthost, conn, le16_to_cpu(rsp->scid),
-						le16_to_cpu(rsp->dcid));
+	l2conn = btconn_find_l2cap_conn_by_scid(conn, le16_to_cpu(rsp->scid));
+	if (l2conn)
+		l2conn->dcid = le16_to_cpu(rsp->dcid);
+	else
+		return false;
 
 	if (le16_to_cpu(rsp->result) == 0x0001) {
 		struct bt_l2cap_pdu_config_req req;
@@ -993,7 +1050,7 @@ static bool l2cap_le_conn_req(struct bthost *bthost, struct btconn *conn,
 	rsp.mps = 23;
 	rsp.credits = 1;
 
-	if (bthost->server_psm && bthost->server_psm == psm)
+	if (bthost_find_l2cap_cb_by_psm(bthost, psm))
 		rsp.dcid = cpu_to_le16(conn->next_cid++);
 	else
 		rsp.result = cpu_to_le16(0x0002); /* PSM Not Supported */
@@ -1011,8 +1068,8 @@ static bool l2cap_le_conn_rsp(struct bthost *bthost, struct btconn *conn,
 
 	if (len < sizeof(*rsp))
 		return false;
-
-	bthost_add_l2cap_conn(bthost, conn, 0, le16_to_cpu(rsp->dcid));
+	/* TODO add L2CAP connection before with proper PSM */
+	bthost_add_l2cap_conn(bthost, conn, 0, le16_to_cpu(rsp->dcid), 0);
 
 	return true;
 }
@@ -1230,9 +1287,21 @@ void bthost_le_start_encrypt(struct bthost *bthost, uint16_t handle,
 	send_command(bthost, BT_HCI_CMD_LE_START_ENCRYPT, &cmd, sizeof(cmd));
 }
 
-void bthost_set_server_psm(struct bthost *bthost, uint16_t psm)
+void bthost_add_l2cap_server(struct bthost *bthost, uint16_t psm,
+				bthost_l2cap_connect_cb func, void *user_data)
 {
-	bthost->server_psm = psm;
+	struct l2cap_conn_cb_data *data;
+
+	data = malloc(sizeof(struct l2cap_conn_cb_data));
+	if (!data)
+		return;
+
+	data->psm = psm;
+	data->user_data = user_data;
+	data->func = func;
+	data->next = bthost->new_l2cap_conn_data;
+
+	bthost->new_l2cap_conn_data = data;
 }
 
 void bthost_start(struct bthost *bthost)

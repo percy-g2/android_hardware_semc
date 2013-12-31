@@ -4,12 +4,12 @@ LOCAL_PATH := $(call my-dir)
 BLUEZ_VERSION := $(shell grep ^AC_INIT $(LOCAL_PATH)/../configure.ac | cpp -P -D'AC_INIT(_,v)=v')
 
 # Specify pathmap for glib
-pathmap_INCL += device/sony/$(TARGET_DEVICE)/hardware
+pathmap_INCL += $(LOCAL_PATH)/../../glib/include
 
 # Specify common compiler flags
 BLUEZ_COMMON_CFLAGS := -DVERSION=\"$(BLUEZ_VERSION)\" \
 	-DPLATFORM_SDK_VERSION=$(PLATFORM_SDK_VERSION) \
-	-DPLATFORM_SDK_VERSION=$(PLATFORM_SDK_VERSION) \
+	-DANDROID_STORAGEDIR=\"/data/misc/bluetooth\" \
 	-DHAVE_CONFIG_H \
 	-DANDROID
 
@@ -166,6 +166,7 @@ LOCAL_SRC_FILES := \
 	../monitor/display.c \
 	../monitor/hcidump.h \
 	../monitor/hcidump.c \
+	../monitor/hwdb.c \
 	../monitor/btsnoop.h \
 	../monitor/btsnoop.c \
 	../monitor/control.h \
@@ -202,5 +203,52 @@ LOCAL_CFLAGS := $(BLUEZ_COMMON_CFLAGS)
 LOCAL_MODULE_PATH := $(TARGET_OUT_EXECUTABLES)
 LOCAL_MODULE_TAGS := optional
 LOCAL_MODULE := btmon
+
+include $(BUILD_EXECUTABLE)
+
+#
+# A2DP audio
+#
+
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES := hal-audio.c
+
+LOCAL_C_INCLUDES = \
+	$(call include-path-for, system-core) \
+	$(call include-path-for, libhardware) \
+
+LOCAL_SHARED_LIBRARIES := \
+	libcutils \
+
+LOCAL_CFLAGS := $(BLUEZ_COMMON_CFLAGS) \
+
+LOCAL_MODULE_PATH := $(TARGET_OUT_SHARED_LIBRARIES)/hw
+LOCAL_MODULE_TAGS := optional
+LOCAL_MODULE := audio.a2dp.default
+
+include $(BUILD_SHARED_LIBRARY)
+
+#
+# l2cap-test
+#
+
+include $(CLEAR_VARS)
+
+LOCAL_SRC_FILES := \
+	../tools/l2test.c \
+	../lib/bluetooth.c \
+	../lib/hci.c \
+
+LOCAL_C_INCLUDES := \
+	$(LOCAL_PATH)/.. \
+	$(LOCAL_PATH)/../lib \
+	$(LOCAL_PATH)/../src/shared \
+
+LOCAL_CFLAGS := $(BLUEZ_COMMON_CFLAGS)
+
+LOCAL_MODULE_PATH := $(TARGET_OUT_EXECUTABLES)
+LOCAL_MODULE_TAGS := optional
+LOCAL_MODULE := l2test
 
 include $(BUILD_EXECUTABLE)

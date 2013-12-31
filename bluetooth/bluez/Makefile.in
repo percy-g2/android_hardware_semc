@@ -154,8 +154,10 @@ DIST_COMMON = README $(am__configure_deps) $(am__include_HEADERS_DIST) \
 @OBEX_TRUE@	obexd/plugins/phonebook.h \
 @OBEX_TRUE@	obexd/plugins/phonebook-dummy.c
 @ANDROID_TRUE@am__append_29 = android/system-emulator \
-@ANDROID_TRUE@	android/bluetoothd android/haltest
-@ANDROID_TRUE@am__append_30 = android/libhal-internal.la
+@ANDROID_TRUE@	android/bluetoothd android/haltest \
+@ANDROID_TRUE@	android/android-tester
+@ANDROID_TRUE@am__append_30 = android/libhal-internal.la \
+@ANDROID_TRUE@	android/libaudio-internal.la
 @HID2HCI_TRUE@am__append_31 = $(rules_DATA)
 TESTS = $(am__EXEEXT_8)
 subdir = .
@@ -225,6 +227,17 @@ am__installdirs = "$(DESTDIR)$(libdir)" "$(DESTDIR)$(plugindir)" \
 	"$(DESTDIR)$(systemduserunitdir)" "$(DESTDIR)$(includedir)"
 LTLIBRARIES = $(lib_LTLIBRARIES) $(noinst_LTLIBRARIES) \
 	$(plugin_LTLIBRARIES)
+android_libaudio_internal_la_LIBADD =
+am__android_libaudio_internal_la_SOURCES_DIST = android/hal-audio.c \
+	android/hardware/audio.h android/hardware/audio_effect.h \
+	android/hardware/hardware.h android/system/audio.h
+@ANDROID_TRUE@am_android_libaudio_internal_la_OBJECTS = android/android_libaudio_internal_la-hal-audio.lo
+android_libaudio_internal_la_OBJECTS =  \
+	$(am_android_libaudio_internal_la_OBJECTS)
+AM_V_lt = $(am__v_lt_@AM_V@)
+am__v_lt_ = $(am__v_lt_@AM_DEFAULT_V@)
+am__v_lt_0 = --silent
+@ANDROID_TRUE@am_android_libaudio_internal_la_rpath =
 android_libhal_internal_la_LIBADD =
 am__android_libhal_internal_la_SOURCES_DIST = android/hal.h \
 	android/hal-bluetooth.c android/hal-sock.c \
@@ -246,9 +259,6 @@ am__android_libhal_internal_la_SOURCES_DIST = android/hal.h \
 @ANDROID_TRUE@	android/android_libhal_internal_la-hal-ipc.lo
 android_libhal_internal_la_OBJECTS =  \
 	$(am_android_libhal_internal_la_OBJECTS)
-AM_V_lt = $(am__v_lt_@AM_V@)
-am__v_lt_ = $(am__v_lt_@AM_DEFAULT_V@)
-am__v_lt_0 = --silent
 @ANDROID_TRUE@am_android_libhal_internal_la_rpath =
 gdbus_libgdbus_internal_la_LIBADD =
 am_gdbus_libgdbus_internal_la_OBJECTS = gdbus/mainloop.lo \
@@ -332,7 +342,8 @@ plugins_sixaxis_la_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC \
 @EXPERIMENTAL_TRUE@am__EXEEXT_6 = profiles/iap/iapd$(EXEEXT)
 @ANDROID_TRUE@am__EXEEXT_7 = android/system-emulator$(EXEEXT) \
 @ANDROID_TRUE@	android/bluetoothd$(EXEEXT) \
-@ANDROID_TRUE@	android/haltest$(EXEEXT)
+@ANDROID_TRUE@	android/haltest$(EXEEXT) \
+@ANDROID_TRUE@	android/android-tester$(EXEEXT)
 am__EXEEXT_8 = unit/test-eir$(EXEEXT) unit/test-uuid$(EXEEXT) \
 	unit/test-textfile$(EXEEXT) unit/test-crc$(EXEEXT) \
 	unit/test-mgmt$(EXEEXT) unit/test-sdp$(EXEEXT) \
@@ -343,6 +354,31 @@ am__EXEEXT_8 = unit/test-eir$(EXEEXT) unit/test-uuid$(EXEEXT) \
 	unit/test-gobex-apparam$(EXEEXT) unit/test-lib$(EXEEXT)
 PROGRAMS = $(bin_PROGRAMS) $(cups_PROGRAMS) $(libexec_PROGRAMS) \
 	$(noinst_PROGRAMS) $(udev_PROGRAMS)
+am__android_android_tester_SOURCES_DIST = emulator/btdev.h \
+	emulator/btdev.c emulator/bthost.h emulator/bthost.c \
+	src/shared/util.h src/shared/util.c src/shared/mgmt.h \
+	src/shared/mgmt.c src/shared/hciemu.h src/shared/hciemu.c \
+	src/shared/tester.h src/shared/tester.c android/hal-utils.h \
+	android/hal-utils.c android/client/hwmodule.c \
+	android/android-tester.c
+@ANDROID_TRUE@am_android_android_tester_OBJECTS =  \
+@ANDROID_TRUE@	emulator/android_android_tester-btdev.$(OBJEXT) \
+@ANDROID_TRUE@	emulator/android_android_tester-bthost.$(OBJEXT) \
+@ANDROID_TRUE@	src/shared/android_android_tester-util.$(OBJEXT) \
+@ANDROID_TRUE@	src/shared/android_android_tester-mgmt.$(OBJEXT) \
+@ANDROID_TRUE@	src/shared/android_android_tester-hciemu.$(OBJEXT) \
+@ANDROID_TRUE@	src/shared/android_android_tester-tester.$(OBJEXT) \
+@ANDROID_TRUE@	android/android_android_tester-hal-utils.$(OBJEXT) \
+@ANDROID_TRUE@	android/client/android_android_tester-hwmodule.$(OBJEXT) \
+@ANDROID_TRUE@	android/android_android_tester-android-tester.$(OBJEXT)
+android_android_tester_OBJECTS = $(am_android_android_tester_OBJECTS)
+@ANDROID_TRUE@android_android_tester_DEPENDENCIES =  \
+@ANDROID_TRUE@	lib/libbluetooth-internal.la \
+@ANDROID_TRUE@	android/libhal-internal.la
+android_android_tester_LINK = $(LIBTOOL) $(AM_V_lt) --tag=CC \
+	$(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=link $(CCLD) \
+	$(android_android_tester_CFLAGS) $(CFLAGS) \
+	$(android_android_tester_LDFLAGS) $(LDFLAGS) -o $@
 am__android_bluetoothd_SOURCES_DIST = android/main.c src/log.c \
 	android/hal-msg.h android/utils.h src/sdpd-database.c \
 	src/sdpd-server.c src/sdpd-service.c src/sdpd-request.c \
@@ -460,9 +496,9 @@ am__monitor_btmon_SOURCES_DIST = monitor/main.c monitor/bt.h \
 	monitor/btsnoop.h monitor/btsnoop.c monitor/control.h \
 	monitor/control.c monitor/packet.h monitor/packet.c \
 	monitor/vendor.h monitor/vendor.c monitor/lmp.h monitor/lmp.c \
-	monitor/l2cap.h monitor/l2cap.c monitor/uuid.h monitor/uuid.c \
-	monitor/sdp.h monitor/sdp.c monitor/crc.h monitor/crc.c \
-	monitor/ll.h monitor/ll.c
+	monitor/crc.h monitor/crc.c monitor/ll.h monitor/ll.c \
+	monitor/l2cap.h monitor/l2cap.c monitor/sdp.h monitor/sdp.c \
+	monitor/uuid.h monitor/uuid.c monitor/hwdb.h monitor/hwdb.c
 @MONITOR_TRUE@am_monitor_btmon_OBJECTS = monitor/main.$(OBJEXT) \
 @MONITOR_TRUE@	monitor/mainloop.$(OBJEXT) \
 @MONITOR_TRUE@	monitor/display.$(OBJEXT) \
@@ -471,9 +507,9 @@ am__monitor_btmon_SOURCES_DIST = monitor/main.c monitor/bt.h \
 @MONITOR_TRUE@	monitor/control.$(OBJEXT) \
 @MONITOR_TRUE@	monitor/packet.$(OBJEXT) \
 @MONITOR_TRUE@	monitor/vendor.$(OBJEXT) monitor/lmp.$(OBJEXT) \
-@MONITOR_TRUE@	monitor/l2cap.$(OBJEXT) monitor/uuid.$(OBJEXT) \
-@MONITOR_TRUE@	monitor/sdp.$(OBJEXT) monitor/crc.$(OBJEXT) \
-@MONITOR_TRUE@	monitor/ll.$(OBJEXT)
+@MONITOR_TRUE@	monitor/crc.$(OBJEXT) monitor/ll.$(OBJEXT) \
+@MONITOR_TRUE@	monitor/l2cap.$(OBJEXT) monitor/sdp.$(OBJEXT) \
+@MONITOR_TRUE@	monitor/uuid.$(OBJEXT) monitor/hwdb.$(OBJEXT)
 monitor_btmon_OBJECTS = $(am_monitor_btmon_OBJECTS)
 @MONITOR_TRUE@monitor_btmon_DEPENDENCIES =  \
 @MONITOR_TRUE@	lib/libbluetooth-internal.la
@@ -1106,17 +1142,19 @@ AM_V_GEN = $(am__v_GEN_@AM_V@)
 am__v_GEN_ = $(am__v_GEN_@AM_DEFAULT_V@)
 am__v_GEN_0 = @echo "  GEN   " $@;
 SOURCES = $(profiles_sap_libsap_a_SOURCES) \
+	$(android_libaudio_internal_la_SOURCES) \
 	$(android_libhal_internal_la_SOURCES) \
 	$(gdbus_libgdbus_internal_la_SOURCES) \
 	$(lib_libbluetooth_internal_la_SOURCES) \
 	$(lib_libbluetooth_la_SOURCES) \
 	$(plugins_external_dummy_la_SOURCES) \
-	$(plugins_sixaxis_la_SOURCES) $(android_bluetoothd_SOURCES) \
-	$(android_haltest_SOURCES) $(android_system_emulator_SOURCES) \
-	$(attrib_gatttool_SOURCES) $(client_bluetoothctl_SOURCES) \
-	$(emulator_b1ee_SOURCES) $(emulator_btvirt_SOURCES) \
-	$(monitor_btmon_SOURCES) $(obexd_src_obexd_SOURCES) \
-	$(nodist_obexd_src_obexd_SOURCES) \
+	$(plugins_sixaxis_la_SOURCES) \
+	$(android_android_tester_SOURCES) \
+	$(android_bluetoothd_SOURCES) $(android_haltest_SOURCES) \
+	$(android_system_emulator_SOURCES) $(attrib_gatttool_SOURCES) \
+	$(client_bluetoothctl_SOURCES) $(emulator_b1ee_SOURCES) \
+	$(emulator_btvirt_SOURCES) $(monitor_btmon_SOURCES) \
+	$(obexd_src_obexd_SOURCES) $(nodist_obexd_src_obexd_SOURCES) \
 	$(profiles_cups_bluetooth_SOURCES) \
 	$(profiles_iap_iapd_SOURCES) $(src_bluetoothd_SOURCES) \
 	$(nodist_src_bluetoothd_SOURCES) tools/amptest.c \
@@ -1146,12 +1184,14 @@ SOURCES = $(profiles_sap_libsap_a_SOURCES) \
 	$(unit_test_mgmt_SOURCES) $(unit_test_sdp_SOURCES) \
 	$(unit_test_textfile_SOURCES) $(unit_test_uuid_SOURCES)
 DIST_SOURCES = $(am__profiles_sap_libsap_a_SOURCES_DIST) \
+	$(am__android_libaudio_internal_la_SOURCES_DIST) \
 	$(am__android_libhal_internal_la_SOURCES_DIST) \
 	$(gdbus_libgdbus_internal_la_SOURCES) \
 	$(lib_libbluetooth_internal_la_SOURCES) \
 	$(am__lib_libbluetooth_la_SOURCES_DIST) \
 	$(am__plugins_external_dummy_la_SOURCES_DIST) \
 	$(am__plugins_sixaxis_la_SOURCES_DIST) \
+	$(am__android_android_tester_SOURCES_DIST) \
 	$(am__android_bluetoothd_SOURCES_DIST) \
 	$(am__android_haltest_SOURCES_DIST) \
 	$(am__android_system_emulator_SOURCES_DIST) \
@@ -1401,7 +1441,15 @@ EXTRA_DIST = src/bluetooth.service.in src/org.bluez.service \
 	android/Android.mk android/hal-ipc-api.txt android/README \
 	android/pics-gap.txt android/pics-hid.txt android/pics-pan.txt \
 	android/pics-did.txt android/pics-opp.txt \
-	android/pics-pbap.txt tools/hid2hci.rules $(test_scripts) \
+	android/pics-pbap.txt android/pixit-did.txt \
+	android/pts-did.txt android/pixit-gap.txt \
+	android/pixit-hid.txt android/pixit-opp.txt \
+	android/pixit-pan.txt android/pixit-pbap.txt \
+	android/pts-gap.txt android/pts-hid.txt android/pts-opp.txt \
+	android/pts-pbap.txt android/audio-ipc-api.txt \
+	android/pics-map.txt android/pixit-map.txt android/pts-map.txt \
+	android/pics-l2cap.txt android/pixit-l2cap.txt \
+	android/pts-l2cap.txt tools/hid2hci.rules $(test_scripts) \
 	doc/assigned-numbers.txt doc/supported-features.txt \
 	doc/mgmt-api.txt doc/adapter-api.txt doc/device-api.txt \
 	doc/agent-api.txt doc/profile-api.txt doc/network-api.txt \
@@ -1437,7 +1485,7 @@ extra_sources = lib/uuid.c
 local_headers = $(foreach file,$(lib_headers), lib/bluetooth/$(notdir $(file)))
 BUILT_SOURCES = $(local_headers) src/builtin.h obexd/src/builtin.h
 @LIBRARY_TRUE@lib_libbluetooth_la_SOURCES = $(lib_headers) $(lib_sources)
-@LIBRARY_TRUE@lib_libbluetooth_la_LDFLAGS = $(AM_LDFLAGS) -version-info 20:3:17
+@LIBRARY_TRUE@lib_libbluetooth_la_LDFLAGS = $(AM_LDFLAGS) -version-info 20:4:17
 @LIBRARY_TRUE@lib_libbluetooth_la_DEPENDENCIES = $(local_headers)
 lib_libbluetooth_internal_la_SOURCES = $(lib_headers) $(lib_sources) \
 					$(extra_headers) $(extra_sources)
@@ -1550,7 +1598,8 @@ test_scripts = test/sap_client.py test/bluezutils.py test/dbusdef.py \
 	test/service-did.xml test/service-spp.xml test/service-opp.xml \
 	test/service-ftp.xml test/simple-player test/test-nap \
 	test/test-heartrate test/test-alert test/test-hfp \
-	test/test-cyclingspeed
+	test/test-cyclingspeed test/opp-client test/ftp-client \
+	test/pbap-client test/map-client
 @CLIENT_TRUE@client_bluetoothctl_SOURCES = client/main.c \
 @CLIENT_TRUE@					client/display.h client/display.c \
 @CLIENT_TRUE@					client/agent.h client/agent.c \
@@ -1568,13 +1617,14 @@ test_scripts = test/sap_client.py test/bluezutils.py test/dbusdef.py \
 @MONITOR_TRUE@					monitor/packet.h monitor/packet.c \
 @MONITOR_TRUE@					monitor/vendor.h monitor/vendor.c \
 @MONITOR_TRUE@					monitor/lmp.h monitor/lmp.c \
-@MONITOR_TRUE@					monitor/l2cap.h monitor/l2cap.c \
-@MONITOR_TRUE@					monitor/uuid.h monitor/uuid.c \
-@MONITOR_TRUE@					monitor/sdp.h monitor/sdp.c \
 @MONITOR_TRUE@					monitor/crc.h monitor/crc.c \
-@MONITOR_TRUE@					monitor/ll.h monitor/ll.c
+@MONITOR_TRUE@					monitor/ll.h monitor/ll.c \
+@MONITOR_TRUE@					monitor/l2cap.h monitor/l2cap.c \
+@MONITOR_TRUE@					monitor/sdp.h monitor/sdp.c \
+@MONITOR_TRUE@					monitor/uuid.h monitor/uuid.c \
+@MONITOR_TRUE@					monitor/hwdb.h monitor/hwdb.c
 
-@MONITOR_TRUE@monitor_btmon_LDADD = lib/libbluetooth-internal.la
+@MONITOR_TRUE@monitor_btmon_LDADD = lib/libbluetooth-internal.la @UDEV_LIBS@
 @EXPERIMENTAL_TRUE@emulator_btvirt_SOURCES = emulator/main.c monitor/bt.h \
 @EXPERIMENTAL_TRUE@					monitor/mainloop.h monitor/mainloop.c \
 @EXPERIMENTAL_TRUE@					emulator/server.h emulator/server.c \
@@ -1878,6 +1928,27 @@ nodist_obexd_src_obexd_SOURCES = $(obexd_builtin_files)
 @ANDROID_TRUE@				-DPLATFORM_SDK_VERSION=19
 
 @ANDROID_TRUE@android_haltest_LDFLAGS = -pthread
+@ANDROID_TRUE@android_android_tester_SOURCES = emulator/btdev.h emulator/btdev.c \
+@ANDROID_TRUE@				emulator/bthost.h emulator/bthost.c \
+@ANDROID_TRUE@				src/shared/util.h src/shared/util.c \
+@ANDROID_TRUE@				src/shared/mgmt.h src/shared/mgmt.c \
+@ANDROID_TRUE@				src/shared/hciemu.h src/shared/hciemu.c \
+@ANDROID_TRUE@				src/shared/tester.h src/shared/tester.c \
+@ANDROID_TRUE@				android/hal-utils.h android/hal-utils.c \
+@ANDROID_TRUE@				android/client/hwmodule.c android/android-tester.c
+
+@ANDROID_TRUE@android_android_tester_CFLAGS = $(AM_CFLAGS) -I$(srcdir)/android
+@ANDROID_TRUE@android_android_tester_LDADD = lib/libbluetooth-internal.la \
+@ANDROID_TRUE@				android/libhal-internal.la @GLIB_LIBS@
+
+@ANDROID_TRUE@android_android_tester_LDFLAGS = -pthread
+@ANDROID_TRUE@android_libaudio_internal_la_SOURCES = android/hal-audio.c \
+@ANDROID_TRUE@					android/hardware/audio.h \
+@ANDROID_TRUE@					android/hardware/audio_effect.h \
+@ANDROID_TRUE@					android/hardware/hardware.h \
+@ANDROID_TRUE@					android/system/audio.h
+
+@ANDROID_TRUE@android_libaudio_internal_la_CPPFLAGS = -I$(srcdir)/android
 @HID2HCI_TRUE@rulesdir = @UDEV_DIR@/rules.d
 @HID2HCI_TRUE@rules_DATA = tools/97-hid2hci.rules
 @TEST_TRUE@testdir = $(pkglibdir)/test
@@ -2109,6 +2180,10 @@ android/$(am__dirstamp):
 android/$(DEPDIR)/$(am__dirstamp):
 	@$(MKDIR_P) android/$(DEPDIR)
 	@: > android/$(DEPDIR)/$(am__dirstamp)
+android/android_libaudio_internal_la-hal-audio.lo:  \
+	android/$(am__dirstamp) android/$(DEPDIR)/$(am__dirstamp)
+android/libaudio-internal.la: $(android_libaudio_internal_la_OBJECTS) $(android_libaudio_internal_la_DEPENDENCIES) $(EXTRA_android_libaudio_internal_la_DEPENDENCIES) android/$(am__dirstamp)
+	$(AM_V_CCLD)$(LINK) $(am_android_libaudio_internal_la_rpath) $(android_libaudio_internal_la_OBJECTS) $(android_libaudio_internal_la_LIBADD) $(LIBS)
 android/android_libhal_internal_la-hal-bluetooth.lo:  \
 	android/$(am__dirstamp) android/$(DEPDIR)/$(am__dirstamp)
 android/android_libhal_internal_la-hal-sock.lo:  \
@@ -2358,6 +2433,50 @@ clean-udevPROGRAMS:
 	list=`for p in $$list; do echo "$$p"; done | sed 's/$(EXEEXT)$$//'`; \
 	echo " rm -f" $$list; \
 	rm -f $$list
+emulator/$(am__dirstamp):
+	@$(MKDIR_P) emulator
+	@: > emulator/$(am__dirstamp)
+emulator/$(DEPDIR)/$(am__dirstamp):
+	@$(MKDIR_P) emulator/$(DEPDIR)
+	@: > emulator/$(DEPDIR)/$(am__dirstamp)
+emulator/android_android_tester-btdev.$(OBJEXT):  \
+	emulator/$(am__dirstamp) emulator/$(DEPDIR)/$(am__dirstamp)
+emulator/android_android_tester-bthost.$(OBJEXT):  \
+	emulator/$(am__dirstamp) emulator/$(DEPDIR)/$(am__dirstamp)
+src/shared/$(am__dirstamp):
+	@$(MKDIR_P) src/shared
+	@: > src/shared/$(am__dirstamp)
+src/shared/$(DEPDIR)/$(am__dirstamp):
+	@$(MKDIR_P) src/shared/$(DEPDIR)
+	@: > src/shared/$(DEPDIR)/$(am__dirstamp)
+src/shared/android_android_tester-util.$(OBJEXT):  \
+	src/shared/$(am__dirstamp) \
+	src/shared/$(DEPDIR)/$(am__dirstamp)
+src/shared/android_android_tester-mgmt.$(OBJEXT):  \
+	src/shared/$(am__dirstamp) \
+	src/shared/$(DEPDIR)/$(am__dirstamp)
+src/shared/android_android_tester-hciemu.$(OBJEXT):  \
+	src/shared/$(am__dirstamp) \
+	src/shared/$(DEPDIR)/$(am__dirstamp)
+src/shared/android_android_tester-tester.$(OBJEXT):  \
+	src/shared/$(am__dirstamp) \
+	src/shared/$(DEPDIR)/$(am__dirstamp)
+android/android_android_tester-hal-utils.$(OBJEXT):  \
+	android/$(am__dirstamp) android/$(DEPDIR)/$(am__dirstamp)
+android/client/$(am__dirstamp):
+	@$(MKDIR_P) android/client
+	@: > android/client/$(am__dirstamp)
+android/client/$(DEPDIR)/$(am__dirstamp):
+	@$(MKDIR_P) android/client/$(DEPDIR)
+	@: > android/client/$(DEPDIR)/$(am__dirstamp)
+android/client/android_android_tester-hwmodule.$(OBJEXT):  \
+	android/client/$(am__dirstamp) \
+	android/client/$(DEPDIR)/$(am__dirstamp)
+android/android_android_tester-android-tester.$(OBJEXT):  \
+	android/$(am__dirstamp) android/$(DEPDIR)/$(am__dirstamp)
+android/android-tester$(EXEEXT): $(android_android_tester_OBJECTS) $(android_android_tester_DEPENDENCIES) $(EXTRA_android_android_tester_DEPENDENCIES) android/$(am__dirstamp)
+	@rm -f android/android-tester$(EXEEXT)
+	$(AM_V_CCLD)$(android_android_tester_LINK) $(android_android_tester_OBJECTS) $(android_android_tester_LDADD) $(LIBS)
 android/main.$(OBJEXT): android/$(am__dirstamp) \
 	android/$(DEPDIR)/$(am__dirstamp)
 src/$(am__dirstamp):
@@ -2378,12 +2497,6 @@ src/sdpd-request.$(OBJEXT): src/$(am__dirstamp) \
 src/glib-helper.$(OBJEXT): src/$(am__dirstamp) \
 	src/$(DEPDIR)/$(am__dirstamp)
 src/eir.$(OBJEXT): src/$(am__dirstamp) src/$(DEPDIR)/$(am__dirstamp)
-src/shared/$(am__dirstamp):
-	@$(MKDIR_P) src/shared
-	@: > src/shared/$(am__dirstamp)
-src/shared/$(DEPDIR)/$(am__dirstamp):
-	@$(MKDIR_P) src/shared/$(DEPDIR)
-	@: > src/shared/$(DEPDIR)/$(am__dirstamp)
 src/shared/util.$(OBJEXT): src/shared/$(am__dirstamp) \
 	src/shared/$(DEPDIR)/$(am__dirstamp)
 src/shared/mgmt.$(OBJEXT): src/shared/$(am__dirstamp) \
@@ -2423,12 +2536,6 @@ profiles/network/bnep.$(OBJEXT): profiles/network/$(am__dirstamp) \
 android/bluetoothd$(EXEEXT): $(android_bluetoothd_OBJECTS) $(android_bluetoothd_DEPENDENCIES) $(EXTRA_android_bluetoothd_DEPENDENCIES) android/$(am__dirstamp)
 	@rm -f android/bluetoothd$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(android_bluetoothd_OBJECTS) $(android_bluetoothd_LDADD) $(LIBS)
-android/client/$(am__dirstamp):
-	@$(MKDIR_P) android/client
-	@: > android/client/$(am__dirstamp)
-android/client/$(DEPDIR)/$(am__dirstamp):
-	@$(MKDIR_P) android/client/$(DEPDIR)
-	@: > android/client/$(DEPDIR)/$(am__dirstamp)
 android/client/android_haltest-haltest.$(OBJEXT):  \
 	android/client/$(am__dirstamp) \
 	android/client/$(DEPDIR)/$(am__dirstamp)
@@ -2524,12 +2631,6 @@ monitor/uuid.$(OBJEXT): monitor/$(am__dirstamp) \
 client/bluetoothctl$(EXEEXT): $(client_bluetoothctl_OBJECTS) $(client_bluetoothctl_DEPENDENCIES) $(EXTRA_client_bluetoothctl_DEPENDENCIES) client/$(am__dirstamp)
 	@rm -f client/bluetoothctl$(EXEEXT)
 	$(AM_V_CCLD)$(LINK) $(client_bluetoothctl_OBJECTS) $(client_bluetoothctl_LDADD) $(LIBS)
-emulator/$(am__dirstamp):
-	@$(MKDIR_P) emulator
-	@: > emulator/$(am__dirstamp)
-emulator/$(DEPDIR)/$(am__dirstamp):
-	@$(MKDIR_P) emulator/$(DEPDIR)
-	@: > emulator/$(DEPDIR)/$(am__dirstamp)
 emulator/b1ee.$(OBJEXT): emulator/$(am__dirstamp) \
 	emulator/$(DEPDIR)/$(am__dirstamp)
 emulator/b1ee$(EXEEXT): $(emulator_b1ee_OBJECTS) $(emulator_b1ee_DEPENDENCIES) $(EXTRA_emulator_b1ee_DEPENDENCIES) emulator/$(am__dirstamp)
@@ -2566,13 +2667,15 @@ monitor/vendor.$(OBJEXT): monitor/$(am__dirstamp) \
 	monitor/$(DEPDIR)/$(am__dirstamp)
 monitor/lmp.$(OBJEXT): monitor/$(am__dirstamp) \
 	monitor/$(DEPDIR)/$(am__dirstamp)
+monitor/crc.$(OBJEXT): monitor/$(am__dirstamp) \
+	monitor/$(DEPDIR)/$(am__dirstamp)
+monitor/ll.$(OBJEXT): monitor/$(am__dirstamp) \
+	monitor/$(DEPDIR)/$(am__dirstamp)
 monitor/l2cap.$(OBJEXT): monitor/$(am__dirstamp) \
 	monitor/$(DEPDIR)/$(am__dirstamp)
 monitor/sdp.$(OBJEXT): monitor/$(am__dirstamp) \
 	monitor/$(DEPDIR)/$(am__dirstamp)
-monitor/crc.$(OBJEXT): monitor/$(am__dirstamp) \
-	monitor/$(DEPDIR)/$(am__dirstamp)
-monitor/ll.$(OBJEXT): monitor/$(am__dirstamp) \
+monitor/hwdb.$(OBJEXT): monitor/$(am__dirstamp) \
 	monitor/$(DEPDIR)/$(am__dirstamp)
 monitor/btmon$(EXEEXT): $(monitor_btmon_OBJECTS) $(monitor_btmon_DEPENDENCIES) $(EXTRA_monitor_btmon_DEPENDENCIES) monitor/$(am__dirstamp)
 	@rm -f monitor/btmon$(EXEEXT)
@@ -3400,7 +3503,11 @@ uninstall-testSCRIPTS:
 mostlyclean-compile:
 	-rm -f *.$(OBJEXT)
 	-rm -f android/a2dp.$(OBJEXT)
+	-rm -f android/android_android_tester-android-tester.$(OBJEXT)
+	-rm -f android/android_android_tester-hal-utils.$(OBJEXT)
 	-rm -f android/android_haltest-hal-utils.$(OBJEXT)
+	-rm -f android/android_libaudio_internal_la-hal-audio.$(OBJEXT)
+	-rm -f android/android_libaudio_internal_la-hal-audio.lo
 	-rm -f android/android_libhal_internal_la-hal-a2dp.$(OBJEXT)
 	-rm -f android/android_libhal_internal_la-hal-a2dp.lo
 	-rm -f android/android_libhal_internal_la-hal-bluetooth.$(OBJEXT)
@@ -3415,6 +3522,7 @@ mostlyclean-compile:
 	-rm -f android/android_libhal_internal_la-hal-sock.lo
 	-rm -f android/avdtp.$(OBJEXT)
 	-rm -f android/bluetooth.$(OBJEXT)
+	-rm -f android/client/android_android_tester-hwmodule.$(OBJEXT)
 	-rm -f android/client/android_haltest-haltest.$(OBJEXT)
 	-rm -f android/client/android_haltest-history.$(OBJEXT)
 	-rm -f android/client/android_haltest-hwmodule.$(OBJEXT)
@@ -3451,6 +3559,8 @@ mostlyclean-compile:
 	-rm -f client/display.$(OBJEXT)
 	-rm -f client/main.$(OBJEXT)
 	-rm -f emulator/amp.$(OBJEXT)
+	-rm -f emulator/android_android_tester-btdev.$(OBJEXT)
+	-rm -f emulator/android_android_tester-bthost.$(OBJEXT)
 	-rm -f emulator/b1ee.$(OBJEXT)
 	-rm -f emulator/btdev.$(OBJEXT)
 	-rm -f emulator/bthost.$(OBJEXT)
@@ -3492,6 +3602,7 @@ mostlyclean-compile:
 	-rm -f monitor/crc.$(OBJEXT)
 	-rm -f monitor/display.$(OBJEXT)
 	-rm -f monitor/hcidump.$(OBJEXT)
+	-rm -f monitor/hwdb.$(OBJEXT)
 	-rm -f monitor/l2cap.$(OBJEXT)
 	-rm -f monitor/ll.$(OBJEXT)
 	-rm -f monitor/lmp.$(OBJEXT)
@@ -3628,6 +3739,10 @@ mostlyclean-compile:
 	-rm -f src/sdpd-request.$(OBJEXT)
 	-rm -f src/sdpd-server.$(OBJEXT)
 	-rm -f src/sdpd-service.$(OBJEXT)
+	-rm -f src/shared/android_android_tester-hciemu.$(OBJEXT)
+	-rm -f src/shared/android_android_tester-mgmt.$(OBJEXT)
+	-rm -f src/shared/android_android_tester-tester.$(OBJEXT)
+	-rm -f src/shared/android_android_tester-util.$(OBJEXT)
 	-rm -f src/shared/bluetoothd-mgmt.$(OBJEXT)
 	-rm -f src/shared/bluetoothd-util.$(OBJEXT)
 	-rm -f src/shared/btsnoop.$(OBJEXT)
@@ -3730,7 +3845,10 @@ distclean-compile:
 	-rm -f *.tab.c
 
 @AMDEP_TRUE@@am__include@ @am__quote@android/$(DEPDIR)/a2dp.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@android/$(DEPDIR)/android_android_tester-android-tester.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@android/$(DEPDIR)/android_android_tester-hal-utils.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@android/$(DEPDIR)/android_haltest-hal-utils.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@android/$(DEPDIR)/android_libaudio_internal_la-hal-audio.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@android/$(DEPDIR)/android_libhal_internal_la-hal-a2dp.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@android/$(DEPDIR)/android_libhal_internal_la-hal-bluetooth.Plo@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@android/$(DEPDIR)/android_libhal_internal_la-hal-hidhost.Plo@am__quote@
@@ -3745,6 +3863,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@android/$(DEPDIR)/pan.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@android/$(DEPDIR)/socket.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@android/$(DEPDIR)/system-emulator.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@android/client/$(DEPDIR)/android_android_tester-hwmodule.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@android/client/$(DEPDIR)/android_haltest-haltest.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@android/client/$(DEPDIR)/android_haltest-history.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@android/client/$(DEPDIR)/android_haltest-hwmodule.Po@am__quote@
@@ -3775,6 +3894,8 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@client/$(DEPDIR)/display.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@client/$(DEPDIR)/main.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@emulator/$(DEPDIR)/amp.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@emulator/$(DEPDIR)/android_android_tester-btdev.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@emulator/$(DEPDIR)/android_android_tester-bthost.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@emulator/$(DEPDIR)/b1ee.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@emulator/$(DEPDIR)/btdev.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@emulator/$(DEPDIR)/bthost.Po@am__quote@
@@ -3807,6 +3928,7 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@monitor/$(DEPDIR)/crc.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@monitor/$(DEPDIR)/display.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@monitor/$(DEPDIR)/hcidump.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@monitor/$(DEPDIR)/hwdb.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@monitor/$(DEPDIR)/l2cap.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@monitor/$(DEPDIR)/ll.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@monitor/$(DEPDIR)/lmp.Po@am__quote@
@@ -3942,6 +4064,10 @@ distclean-compile:
 @AMDEP_TRUE@@am__include@ @am__quote@src/$(DEPDIR)/sdpd-server.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@src/$(DEPDIR)/sdpd-service.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@src/$(DEPDIR)/textfile.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@src/shared/$(DEPDIR)/android_android_tester-hciemu.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@src/shared/$(DEPDIR)/android_android_tester-mgmt.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@src/shared/$(DEPDIR)/android_android_tester-tester.Po@am__quote@
+@AMDEP_TRUE@@am__include@ @am__quote@src/shared/$(DEPDIR)/android_android_tester-util.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@src/shared/$(DEPDIR)/bluetoothd-mgmt.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@src/shared/$(DEPDIR)/bluetoothd-util.Po@am__quote@
 @AMDEP_TRUE@@am__include@ @am__quote@src/shared/$(DEPDIR)/btsnoop.Po@am__quote@
@@ -4063,6 +4189,13 @@ distclean-compile:
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LTCOMPILE) -c -o $@ $<
 
+android/android_libaudio_internal_la-hal-audio.lo: android/hal-audio.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(android_libaudio_internal_la_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT android/android_libaudio_internal_la-hal-audio.lo -MD -MP -MF android/$(DEPDIR)/android_libaudio_internal_la-hal-audio.Tpo -c -o android/android_libaudio_internal_la-hal-audio.lo `test -f 'android/hal-audio.c' || echo '$(srcdir)/'`android/hal-audio.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) android/$(DEPDIR)/android_libaudio_internal_la-hal-audio.Tpo android/$(DEPDIR)/android_libaudio_internal_la-hal-audio.Plo
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='android/hal-audio.c' object='android/android_libaudio_internal_la-hal-audio.lo' libtool=yes @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(android_libaudio_internal_la_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -c -o android/android_libaudio_internal_la-hal-audio.lo `test -f 'android/hal-audio.c' || echo '$(srcdir)/'`android/hal-audio.c
+
 android/android_libhal_internal_la-hal-bluetooth.lo: android/hal-bluetooth.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(android_libhal_internal_la_CPPFLAGS) $(CPPFLAGS) $(AM_CFLAGS) $(CFLAGS) -MT android/android_libhal_internal_la-hal-bluetooth.lo -MD -MP -MF android/$(DEPDIR)/android_libhal_internal_la-hal-bluetooth.Tpo -c -o android/android_libhal_internal_la-hal-bluetooth.lo `test -f 'android/hal-bluetooth.c' || echo '$(srcdir)/'`android/hal-bluetooth.c
 @am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) android/$(DEPDIR)/android_libhal_internal_la-hal-bluetooth.Tpo android/$(DEPDIR)/android_libhal_internal_la-hal-bluetooth.Plo
@@ -4118,6 +4251,132 @@ plugins/plugins_sixaxis_la-sixaxis.lo: plugins/sixaxis.c
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='plugins/sixaxis.c' object='plugins/plugins_sixaxis_la-sixaxis.lo' libtool=yes @AMDEPBACKSLASH@
 @AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
 @am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(LIBTOOL) $(AM_V_lt) --tag=CC $(AM_LIBTOOLFLAGS) $(LIBTOOLFLAGS) --mode=compile $(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(plugins_sixaxis_la_CFLAGS) $(CFLAGS) -c -o plugins/plugins_sixaxis_la-sixaxis.lo `test -f 'plugins/sixaxis.c' || echo '$(srcdir)/'`plugins/sixaxis.c
+
+emulator/android_android_tester-btdev.o: emulator/btdev.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(android_android_tester_CFLAGS) $(CFLAGS) -MT emulator/android_android_tester-btdev.o -MD -MP -MF emulator/$(DEPDIR)/android_android_tester-btdev.Tpo -c -o emulator/android_android_tester-btdev.o `test -f 'emulator/btdev.c' || echo '$(srcdir)/'`emulator/btdev.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) emulator/$(DEPDIR)/android_android_tester-btdev.Tpo emulator/$(DEPDIR)/android_android_tester-btdev.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='emulator/btdev.c' object='emulator/android_android_tester-btdev.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(android_android_tester_CFLAGS) $(CFLAGS) -c -o emulator/android_android_tester-btdev.o `test -f 'emulator/btdev.c' || echo '$(srcdir)/'`emulator/btdev.c
+
+emulator/android_android_tester-btdev.obj: emulator/btdev.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(android_android_tester_CFLAGS) $(CFLAGS) -MT emulator/android_android_tester-btdev.obj -MD -MP -MF emulator/$(DEPDIR)/android_android_tester-btdev.Tpo -c -o emulator/android_android_tester-btdev.obj `if test -f 'emulator/btdev.c'; then $(CYGPATH_W) 'emulator/btdev.c'; else $(CYGPATH_W) '$(srcdir)/emulator/btdev.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) emulator/$(DEPDIR)/android_android_tester-btdev.Tpo emulator/$(DEPDIR)/android_android_tester-btdev.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='emulator/btdev.c' object='emulator/android_android_tester-btdev.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(android_android_tester_CFLAGS) $(CFLAGS) -c -o emulator/android_android_tester-btdev.obj `if test -f 'emulator/btdev.c'; then $(CYGPATH_W) 'emulator/btdev.c'; else $(CYGPATH_W) '$(srcdir)/emulator/btdev.c'; fi`
+
+emulator/android_android_tester-bthost.o: emulator/bthost.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(android_android_tester_CFLAGS) $(CFLAGS) -MT emulator/android_android_tester-bthost.o -MD -MP -MF emulator/$(DEPDIR)/android_android_tester-bthost.Tpo -c -o emulator/android_android_tester-bthost.o `test -f 'emulator/bthost.c' || echo '$(srcdir)/'`emulator/bthost.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) emulator/$(DEPDIR)/android_android_tester-bthost.Tpo emulator/$(DEPDIR)/android_android_tester-bthost.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='emulator/bthost.c' object='emulator/android_android_tester-bthost.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(android_android_tester_CFLAGS) $(CFLAGS) -c -o emulator/android_android_tester-bthost.o `test -f 'emulator/bthost.c' || echo '$(srcdir)/'`emulator/bthost.c
+
+emulator/android_android_tester-bthost.obj: emulator/bthost.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(android_android_tester_CFLAGS) $(CFLAGS) -MT emulator/android_android_tester-bthost.obj -MD -MP -MF emulator/$(DEPDIR)/android_android_tester-bthost.Tpo -c -o emulator/android_android_tester-bthost.obj `if test -f 'emulator/bthost.c'; then $(CYGPATH_W) 'emulator/bthost.c'; else $(CYGPATH_W) '$(srcdir)/emulator/bthost.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) emulator/$(DEPDIR)/android_android_tester-bthost.Tpo emulator/$(DEPDIR)/android_android_tester-bthost.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='emulator/bthost.c' object='emulator/android_android_tester-bthost.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(android_android_tester_CFLAGS) $(CFLAGS) -c -o emulator/android_android_tester-bthost.obj `if test -f 'emulator/bthost.c'; then $(CYGPATH_W) 'emulator/bthost.c'; else $(CYGPATH_W) '$(srcdir)/emulator/bthost.c'; fi`
+
+src/shared/android_android_tester-util.o: src/shared/util.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(android_android_tester_CFLAGS) $(CFLAGS) -MT src/shared/android_android_tester-util.o -MD -MP -MF src/shared/$(DEPDIR)/android_android_tester-util.Tpo -c -o src/shared/android_android_tester-util.o `test -f 'src/shared/util.c' || echo '$(srcdir)/'`src/shared/util.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) src/shared/$(DEPDIR)/android_android_tester-util.Tpo src/shared/$(DEPDIR)/android_android_tester-util.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='src/shared/util.c' object='src/shared/android_android_tester-util.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(android_android_tester_CFLAGS) $(CFLAGS) -c -o src/shared/android_android_tester-util.o `test -f 'src/shared/util.c' || echo '$(srcdir)/'`src/shared/util.c
+
+src/shared/android_android_tester-util.obj: src/shared/util.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(android_android_tester_CFLAGS) $(CFLAGS) -MT src/shared/android_android_tester-util.obj -MD -MP -MF src/shared/$(DEPDIR)/android_android_tester-util.Tpo -c -o src/shared/android_android_tester-util.obj `if test -f 'src/shared/util.c'; then $(CYGPATH_W) 'src/shared/util.c'; else $(CYGPATH_W) '$(srcdir)/src/shared/util.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) src/shared/$(DEPDIR)/android_android_tester-util.Tpo src/shared/$(DEPDIR)/android_android_tester-util.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='src/shared/util.c' object='src/shared/android_android_tester-util.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(android_android_tester_CFLAGS) $(CFLAGS) -c -o src/shared/android_android_tester-util.obj `if test -f 'src/shared/util.c'; then $(CYGPATH_W) 'src/shared/util.c'; else $(CYGPATH_W) '$(srcdir)/src/shared/util.c'; fi`
+
+src/shared/android_android_tester-mgmt.o: src/shared/mgmt.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(android_android_tester_CFLAGS) $(CFLAGS) -MT src/shared/android_android_tester-mgmt.o -MD -MP -MF src/shared/$(DEPDIR)/android_android_tester-mgmt.Tpo -c -o src/shared/android_android_tester-mgmt.o `test -f 'src/shared/mgmt.c' || echo '$(srcdir)/'`src/shared/mgmt.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) src/shared/$(DEPDIR)/android_android_tester-mgmt.Tpo src/shared/$(DEPDIR)/android_android_tester-mgmt.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='src/shared/mgmt.c' object='src/shared/android_android_tester-mgmt.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(android_android_tester_CFLAGS) $(CFLAGS) -c -o src/shared/android_android_tester-mgmt.o `test -f 'src/shared/mgmt.c' || echo '$(srcdir)/'`src/shared/mgmt.c
+
+src/shared/android_android_tester-mgmt.obj: src/shared/mgmt.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(android_android_tester_CFLAGS) $(CFLAGS) -MT src/shared/android_android_tester-mgmt.obj -MD -MP -MF src/shared/$(DEPDIR)/android_android_tester-mgmt.Tpo -c -o src/shared/android_android_tester-mgmt.obj `if test -f 'src/shared/mgmt.c'; then $(CYGPATH_W) 'src/shared/mgmt.c'; else $(CYGPATH_W) '$(srcdir)/src/shared/mgmt.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) src/shared/$(DEPDIR)/android_android_tester-mgmt.Tpo src/shared/$(DEPDIR)/android_android_tester-mgmt.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='src/shared/mgmt.c' object='src/shared/android_android_tester-mgmt.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(android_android_tester_CFLAGS) $(CFLAGS) -c -o src/shared/android_android_tester-mgmt.obj `if test -f 'src/shared/mgmt.c'; then $(CYGPATH_W) 'src/shared/mgmt.c'; else $(CYGPATH_W) '$(srcdir)/src/shared/mgmt.c'; fi`
+
+src/shared/android_android_tester-hciemu.o: src/shared/hciemu.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(android_android_tester_CFLAGS) $(CFLAGS) -MT src/shared/android_android_tester-hciemu.o -MD -MP -MF src/shared/$(DEPDIR)/android_android_tester-hciemu.Tpo -c -o src/shared/android_android_tester-hciemu.o `test -f 'src/shared/hciemu.c' || echo '$(srcdir)/'`src/shared/hciemu.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) src/shared/$(DEPDIR)/android_android_tester-hciemu.Tpo src/shared/$(DEPDIR)/android_android_tester-hciemu.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='src/shared/hciemu.c' object='src/shared/android_android_tester-hciemu.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(android_android_tester_CFLAGS) $(CFLAGS) -c -o src/shared/android_android_tester-hciemu.o `test -f 'src/shared/hciemu.c' || echo '$(srcdir)/'`src/shared/hciemu.c
+
+src/shared/android_android_tester-hciemu.obj: src/shared/hciemu.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(android_android_tester_CFLAGS) $(CFLAGS) -MT src/shared/android_android_tester-hciemu.obj -MD -MP -MF src/shared/$(DEPDIR)/android_android_tester-hciemu.Tpo -c -o src/shared/android_android_tester-hciemu.obj `if test -f 'src/shared/hciemu.c'; then $(CYGPATH_W) 'src/shared/hciemu.c'; else $(CYGPATH_W) '$(srcdir)/src/shared/hciemu.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) src/shared/$(DEPDIR)/android_android_tester-hciemu.Tpo src/shared/$(DEPDIR)/android_android_tester-hciemu.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='src/shared/hciemu.c' object='src/shared/android_android_tester-hciemu.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(android_android_tester_CFLAGS) $(CFLAGS) -c -o src/shared/android_android_tester-hciemu.obj `if test -f 'src/shared/hciemu.c'; then $(CYGPATH_W) 'src/shared/hciemu.c'; else $(CYGPATH_W) '$(srcdir)/src/shared/hciemu.c'; fi`
+
+src/shared/android_android_tester-tester.o: src/shared/tester.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(android_android_tester_CFLAGS) $(CFLAGS) -MT src/shared/android_android_tester-tester.o -MD -MP -MF src/shared/$(DEPDIR)/android_android_tester-tester.Tpo -c -o src/shared/android_android_tester-tester.o `test -f 'src/shared/tester.c' || echo '$(srcdir)/'`src/shared/tester.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) src/shared/$(DEPDIR)/android_android_tester-tester.Tpo src/shared/$(DEPDIR)/android_android_tester-tester.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='src/shared/tester.c' object='src/shared/android_android_tester-tester.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(android_android_tester_CFLAGS) $(CFLAGS) -c -o src/shared/android_android_tester-tester.o `test -f 'src/shared/tester.c' || echo '$(srcdir)/'`src/shared/tester.c
+
+src/shared/android_android_tester-tester.obj: src/shared/tester.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(android_android_tester_CFLAGS) $(CFLAGS) -MT src/shared/android_android_tester-tester.obj -MD -MP -MF src/shared/$(DEPDIR)/android_android_tester-tester.Tpo -c -o src/shared/android_android_tester-tester.obj `if test -f 'src/shared/tester.c'; then $(CYGPATH_W) 'src/shared/tester.c'; else $(CYGPATH_W) '$(srcdir)/src/shared/tester.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) src/shared/$(DEPDIR)/android_android_tester-tester.Tpo src/shared/$(DEPDIR)/android_android_tester-tester.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='src/shared/tester.c' object='src/shared/android_android_tester-tester.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(android_android_tester_CFLAGS) $(CFLAGS) -c -o src/shared/android_android_tester-tester.obj `if test -f 'src/shared/tester.c'; then $(CYGPATH_W) 'src/shared/tester.c'; else $(CYGPATH_W) '$(srcdir)/src/shared/tester.c'; fi`
+
+android/android_android_tester-hal-utils.o: android/hal-utils.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(android_android_tester_CFLAGS) $(CFLAGS) -MT android/android_android_tester-hal-utils.o -MD -MP -MF android/$(DEPDIR)/android_android_tester-hal-utils.Tpo -c -o android/android_android_tester-hal-utils.o `test -f 'android/hal-utils.c' || echo '$(srcdir)/'`android/hal-utils.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) android/$(DEPDIR)/android_android_tester-hal-utils.Tpo android/$(DEPDIR)/android_android_tester-hal-utils.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='android/hal-utils.c' object='android/android_android_tester-hal-utils.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(android_android_tester_CFLAGS) $(CFLAGS) -c -o android/android_android_tester-hal-utils.o `test -f 'android/hal-utils.c' || echo '$(srcdir)/'`android/hal-utils.c
+
+android/android_android_tester-hal-utils.obj: android/hal-utils.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(android_android_tester_CFLAGS) $(CFLAGS) -MT android/android_android_tester-hal-utils.obj -MD -MP -MF android/$(DEPDIR)/android_android_tester-hal-utils.Tpo -c -o android/android_android_tester-hal-utils.obj `if test -f 'android/hal-utils.c'; then $(CYGPATH_W) 'android/hal-utils.c'; else $(CYGPATH_W) '$(srcdir)/android/hal-utils.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) android/$(DEPDIR)/android_android_tester-hal-utils.Tpo android/$(DEPDIR)/android_android_tester-hal-utils.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='android/hal-utils.c' object='android/android_android_tester-hal-utils.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(android_android_tester_CFLAGS) $(CFLAGS) -c -o android/android_android_tester-hal-utils.obj `if test -f 'android/hal-utils.c'; then $(CYGPATH_W) 'android/hal-utils.c'; else $(CYGPATH_W) '$(srcdir)/android/hal-utils.c'; fi`
+
+android/client/android_android_tester-hwmodule.o: android/client/hwmodule.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(android_android_tester_CFLAGS) $(CFLAGS) -MT android/client/android_android_tester-hwmodule.o -MD -MP -MF android/client/$(DEPDIR)/android_android_tester-hwmodule.Tpo -c -o android/client/android_android_tester-hwmodule.o `test -f 'android/client/hwmodule.c' || echo '$(srcdir)/'`android/client/hwmodule.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) android/client/$(DEPDIR)/android_android_tester-hwmodule.Tpo android/client/$(DEPDIR)/android_android_tester-hwmodule.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='android/client/hwmodule.c' object='android/client/android_android_tester-hwmodule.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(android_android_tester_CFLAGS) $(CFLAGS) -c -o android/client/android_android_tester-hwmodule.o `test -f 'android/client/hwmodule.c' || echo '$(srcdir)/'`android/client/hwmodule.c
+
+android/client/android_android_tester-hwmodule.obj: android/client/hwmodule.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(android_android_tester_CFLAGS) $(CFLAGS) -MT android/client/android_android_tester-hwmodule.obj -MD -MP -MF android/client/$(DEPDIR)/android_android_tester-hwmodule.Tpo -c -o android/client/android_android_tester-hwmodule.obj `if test -f 'android/client/hwmodule.c'; then $(CYGPATH_W) 'android/client/hwmodule.c'; else $(CYGPATH_W) '$(srcdir)/android/client/hwmodule.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) android/client/$(DEPDIR)/android_android_tester-hwmodule.Tpo android/client/$(DEPDIR)/android_android_tester-hwmodule.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='android/client/hwmodule.c' object='android/client/android_android_tester-hwmodule.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(android_android_tester_CFLAGS) $(CFLAGS) -c -o android/client/android_android_tester-hwmodule.obj `if test -f 'android/client/hwmodule.c'; then $(CYGPATH_W) 'android/client/hwmodule.c'; else $(CYGPATH_W) '$(srcdir)/android/client/hwmodule.c'; fi`
+
+android/android_android_tester-android-tester.o: android/android-tester.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(android_android_tester_CFLAGS) $(CFLAGS) -MT android/android_android_tester-android-tester.o -MD -MP -MF android/$(DEPDIR)/android_android_tester-android-tester.Tpo -c -o android/android_android_tester-android-tester.o `test -f 'android/android-tester.c' || echo '$(srcdir)/'`android/android-tester.c
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) android/$(DEPDIR)/android_android_tester-android-tester.Tpo android/$(DEPDIR)/android_android_tester-android-tester.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='android/android-tester.c' object='android/android_android_tester-android-tester.o' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(android_android_tester_CFLAGS) $(CFLAGS) -c -o android/android_android_tester-android-tester.o `test -f 'android/android-tester.c' || echo '$(srcdir)/'`android/android-tester.c
+
+android/android_android_tester-android-tester.obj: android/android-tester.c
+@am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(android_android_tester_CFLAGS) $(CFLAGS) -MT android/android_android_tester-android-tester.obj -MD -MP -MF android/$(DEPDIR)/android_android_tester-android-tester.Tpo -c -o android/android_android_tester-android-tester.obj `if test -f 'android/android-tester.c'; then $(CYGPATH_W) 'android/android-tester.c'; else $(CYGPATH_W) '$(srcdir)/android/android-tester.c'; fi`
+@am__fastdepCC_TRUE@	$(AM_V_at)$(am__mv) android/$(DEPDIR)/android_android_tester-android-tester.Tpo android/$(DEPDIR)/android_android_tester-android-tester.Po
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	$(AM_V_CC)source='android/android-tester.c' object='android/android_android_tester-android-tester.obj' libtool=no @AMDEPBACKSLASH@
+@AMDEP_TRUE@@am__fastdepCC_FALSE@	DEPDIR=$(DEPDIR) $(CCDEPMODE) $(depcomp) @AMDEPBACKSLASH@
+@am__fastdepCC_FALSE@	$(AM_V_CC@am__nodep@)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(android_android_tester_CFLAGS) $(CFLAGS) -c -o android/android_android_tester-android-tester.obj `if test -f 'android/android-tester.c'; then $(CYGPATH_W) 'android/android-tester.c'; else $(CYGPATH_W) '$(srcdir)/android/android-tester.c'; fi`
 
 android/client/android_haltest-haltest.o: android/client/haltest.c
 @am__fastdepCC_TRUE@	$(AM_V_CC)$(CC) $(DEFS) $(DEFAULT_INCLUDES) $(INCLUDES) $(AM_CPPFLAGS) $(CPPFLAGS) $(android_haltest_CFLAGS) $(CFLAGS) -MT android/client/android_haltest-haltest.o -MD -MP -MF android/client/$(DEPDIR)/android_haltest-haltest.Tpo -c -o android/client/android_haltest-haltest.o `test -f 'android/client/haltest.c' || echo '$(srcdir)/'`android/client/haltest.c

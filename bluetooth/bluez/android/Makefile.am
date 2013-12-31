@@ -83,9 +83,46 @@ android_haltest_CFLAGS = $(AM_CFLAGS) -I$(srcdir)/android \
 
 android_haltest_LDFLAGS = -pthread
 
+noinst_PROGRAMS += android/android-tester
+
+android_android_tester_SOURCES = emulator/btdev.h emulator/btdev.c \
+				emulator/bthost.h emulator/bthost.c \
+				src/shared/util.h src/shared/util.c \
+				src/shared/mgmt.h src/shared/mgmt.c \
+				src/shared/hciemu.h src/shared/hciemu.c \
+				src/shared/tester.h src/shared/tester.c \
+				android/hal-utils.h android/hal-utils.c \
+				android/client/hwmodule.c android/android-tester.c
+
+android_android_tester_CFLAGS = $(AM_CFLAGS) -I$(srcdir)/android
+
+android_android_tester_LDADD = lib/libbluetooth-internal.la \
+				android/libhal-internal.la @GLIB_LIBS@
+
+android_android_tester_LDFLAGS = -pthread
+
+noinst_LTLIBRARIES += android/libaudio-internal.la
+
+android_libaudio_internal_la_SOURCES = android/hal-audio.c \
+					android/hardware/audio.h \
+					android/hardware/audio_effect.h \
+					android/hardware/hardware.h \
+					android/system/audio.h
+
+android_libaudio_internal_la_CPPFLAGS = -I$(srcdir)/android
+
 endif
 
 EXTRA_DIST += android/Android.mk android/hal-ipc-api.txt android/README \
 		android/pics-gap.txt android/pics-hid.txt \
 		android/pics-pan.txt android/pics-did.txt \
-		android/pics-opp.txt android/pics-pbap.txt
+		android/pics-opp.txt android/pics-pbap.txt \
+		android/pixit-did.txt android/pts-did.txt \
+		android/pixit-gap.txt android/pixit-hid.txt \
+		android/pixit-opp.txt android/pixit-pan.txt \
+		android/pixit-pbap.txt android/pts-gap.txt android/pts-hid.txt \
+		android/pts-opp.txt android/pts-pbap.txt \
+		android/audio-ipc-api.txt android/pics-map.txt \
+		android/pixit-map.txt android/pts-map.txt \
+		android/pics-l2cap.txt android/pixit-l2cap.txt \
+		android/pts-l2cap.txt

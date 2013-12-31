@@ -39,6 +39,7 @@
 #include <bluetooth/bluetooth.h>
 #include <bluetooth/l2cap.h>
 #include <bluetooth/bnep.h>
+#include <btio/btio.h>
 
 #include <glib.h>
 
@@ -67,29 +68,20 @@ struct __service_16 {
 	uint16_t src;
 } __attribute__ ((packed));
 
-struct bnep_conn {
+struct bnep {
 	GIOChannel	*io;
 	uint16_t	src;
 	uint16_t	dst;
+	bdaddr_t	dst_addr;
+	char	iface[16];
 	guint	attempts;
 	guint	setup_to;
-	void	*data;
+	guint	watch;
 	bnep_connect_cb	conn_cb;
+	void	*conn_data;
+	bnep_disconnect_cb disconn_cb;
+	void	*disconn_data;
 };
-
-static void free_bnep_connect(struct bnep_conn *bc)
-{
-	if (!bc)
-		return;
-
-	if (bc->io) {
-		g_io_channel_unref(bc->io);
-		bc->io = NULL;
-	}
-
-	g_free(bc);
-	bc = NULL;
-}
 
 uint16_t bnep_service_id(const char *svc)
 {
@@ -161,7 +153,7 @@ int bnep_cleanup(void)
 	return 0;
 }
 
-int bnep_kill_connection(const bdaddr_t *dst)
+static int bnep_conndel(const bdaddr_t *dst)
 {
 	struct bnep_conndel_req req;
 
@@ -177,7 +169,7 @@ int bnep_kill_connection(const bdaddr_t *dst)
 	return 0;
 }
 
-int bnep_connadd(int sk, uint16_t role, char *dev)
+static int bnep_connadd(int sk, uint16_t role, char *dev)
 {
 	struct bnep_connadd_req req;
 
@@ -197,7 +189,7 @@ int bnep_connadd(int sk, uint16_t role, char *dev)
 	return 0;
 }
 
-int bnep_if_up(const char *devname)
+static int bnep_if_up(const char *devname)
 {
 	struct ifreq ifr;
 	int sk, err;
@@ -222,7 +214,7 @@ int bnep_if_up(const char *devname)
 	return 0;
 }
 
-int bnep_if_down(const char *devname)
+static int bnep_if_down(const char *devname)
 {
 	struct ifreq ifr;
 	int sk, err;
@@ -247,23 +239,33 @@ int bnep_if_down(const char *devname)
 	return 0;
 }
 
+static gboolean bnep_watchdog_cb(GIOChannel *chan, GIOCondition cond,
+								gpointer data)
+{
+	struct bnep *session = data;
+
+	if (session->disconn_cb)
+		session->disconn_cb(session->disconn_data);
+
+	return FALSE;
+}
+
 static gboolean bnep_setup_cb(GIOChannel *chan, GIOCondition cond,
 								gpointer data)
 {
-	struct bnep_conn *bc = data;
+	struct bnep *session = data;
 	struct bnep_control_rsp *rsp;
 	struct timeval timeo;
 	char pkt[BNEP_MTU];
-	char iface[16];
 	ssize_t r;
 	int sk;
 
 	if (cond & G_IO_NVAL)
-		goto failed;
+		return FALSE;
 
-	if (bc->setup_to > 0) {
-		g_source_remove(bc->setup_to);
-		bc->setup_to = 0;
+	if (session->setup_to > 0) {
+		g_source_remove(session->setup_to);
+		session->setup_to = 0;
 	}
 
 	if (cond & (G_IO_HUP | G_IO_ERR)) {
@@ -310,30 +312,35 @@ static gboolean bnep_setup_cb(GIOChannel *chan, GIOCondition cond,
 	timeo.tv_sec = 0;
 	setsockopt(sk, SOL_SOCKET, SO_RCVTIMEO, &timeo, sizeof(timeo));
 
-	sk = g_io_channel_unix_get_fd(bc->io);
-	if (bnep_connadd(sk, bc->src, iface)) {
+	sk = g_io_channel_unix_get_fd(session->io);
+	if (bnep_connadd(sk, session->src, session->iface)) {
 		error("bnep conn could not be added");
 		goto failed;
 	}
 
-	if (bnep_if_up(iface)) {
-		error("could not up %s", iface);
+	if (bnep_if_up(session->iface)) {
+		error("could not up %s", session->iface);
+		bnep_conndel(&session->dst_addr);
 		goto failed;
 	}
 
-	bc->conn_cb(chan, iface, 0, bc->data);
-	free_bnep_connect(bc);
+	session->watch = g_io_add_watch(session->io,
+					G_IO_ERR | G_IO_HUP | G_IO_NVAL,
+					(GIOFunc) bnep_watchdog_cb, session);
+	g_io_channel_unref(session->io);
+	session->io = NULL;
+
+	session->conn_cb(session->iface, 0, session->conn_data);
 
 	return FALSE;
 
 failed:
-	bc->conn_cb(NULL, NULL, -EIO, bc->data);
-	free_bnep_connect(bc);
+	session->conn_cb(NULL, -EIO, session->conn_data);
 
 	return FALSE;
 }
 
-static int bnep_setup_conn_req(struct bnep_conn *bc)
+static int bnep_setup_conn_req(struct bnep *session)
 {
 	struct bnep_setup_conn_req *req;
 	struct __service_16 *s;
@@ -346,67 +353,139 @@ static int bnep_setup_conn_req(struct bnep_conn *bc)
 	req->ctrl = BNEP_SETUP_CONN_REQ;
 	req->uuid_size = 2;     /* 16bit UUID */
 	s = (void *) req->service;
-	s->src = htons(bc->src);
-	s->dst = htons(bc->dst);
+	s->src = htons(session->src);
+	s->dst = htons(session->dst);
 
-	fd = g_io_channel_unix_get_fd(bc->io);
+	fd = g_io_channel_unix_get_fd(session->io);
 	if (write(fd, pkt, sizeof(*req) + sizeof(*s)) < 0) {
 		error("bnep connection req send failed: %s", strerror(errno));
 		return -errno;
 	}
 
-	bc->attempts++;
+	session->attempts++;
 
 	return 0;
 }
 
 static gboolean bnep_conn_req_to(gpointer user_data)
 {
-	struct bnep_conn *bc = user_data;
+	struct bnep *session = user_data;
 
-	if (bc->attempts == CON_SETUP_RETRIES) {
+	if (session->attempts == CON_SETUP_RETRIES) {
 		error("Too many bnep connection attempts");
 	} else {
 		error("bnep connection setup TO, retrying...");
-		if (bnep_setup_conn_req(bc) == 0)
+		if (bnep_setup_conn_req(session) == 0)
 			return TRUE;
 	}
 
-	bc->conn_cb(NULL, NULL, -ETIMEDOUT, bc->data);
-	free_bnep_connect(bc);
+	session->conn_cb(NULL, -ETIMEDOUT, session->conn_data);
 
 	return FALSE;
 }
 
-int bnep_connect(int sk, uint16_t src, uint16_t dst, bnep_connect_cb conn_cb,
-								void *data)
+struct bnep *bnep_new(int sk, uint16_t local_role, uint16_t remote_role)
 {
-	struct bnep_conn *bc;
+	struct bnep *session;
+	int dup_fd;
+
+	dup_fd = dup(sk);
+	if (dup_fd < 0)
+		return NULL;
+
+	session = g_new0(struct bnep, 1);
+	session->io = g_io_channel_unix_new(dup_fd);
+	session->src = local_role;
+	session->dst = remote_role;
+
+	g_io_channel_set_close_on_unref(session->io, TRUE);
+	session->watch = g_io_add_watch(session->io,
+				G_IO_IN | G_IO_ERR | G_IO_HUP | G_IO_NVAL,
+					(GIOFunc) bnep_setup_cb, session);
+
+	return session;
+}
+
+void bnep_free(struct bnep *session)
+{
+	if (!session)
+		return;
+
+	if (session->io) {
+		g_io_channel_shutdown(session->io, FALSE, NULL);
+		g_io_channel_unref(session->io);
+		session->io = NULL;
+	}
+
+	if (session->watch > 0) {
+		g_source_remove(session->watch);
+		session->watch = 0;
+	}
+
+	g_free(session);
+}
+
+int bnep_connect(struct bnep *session, bnep_connect_cb conn_cb, void *data)
+{
+	GError *gerr = NULL;
 	int err;
 
-	if (!conn_cb)
+	if (!session || !conn_cb)
 		return -EINVAL;
 
-	bc = g_new0(struct bnep_conn, 1);
-	bc->io = g_io_channel_unix_new(sk);
-	bc->attempts = 0;
-	bc->src = src;
-	bc->dst = dst;
-	bc->conn_cb = conn_cb;
-	bc->data = data;
+	session->attempts = 0;
+	session->conn_cb = conn_cb;
+	session->conn_data = data;
 
-	err = bnep_setup_conn_req(bc);
+	bt_io_get(session->io, &gerr, BT_IO_OPT_DEST_BDADDR, &session->dst_addr,
+							BT_IO_OPT_INVALID);
+	if (gerr) {
+		error("%s", gerr->message);
+		g_error_free(gerr);
+		return -EINVAL;
+	}
+
+	err = bnep_setup_conn_req(session);
 	if (err < 0)
 		return err;
 
-	bc->setup_to = g_timeout_add_seconds(CON_SETUP_TO,
-							bnep_conn_req_to, bc);
-	g_io_add_watch(bc->io, G_IO_IN | G_IO_ERR | G_IO_HUP | G_IO_NVAL,
-							bnep_setup_cb, bc);
+	session->setup_to = g_timeout_add_seconds(CON_SETUP_TO,
+						bnep_conn_req_to, session);
 	return 0;
 }
 
-int bnep_add_to_bridge(const char *devname, const char *bridge)
+void bnep_disconnect(struct bnep *session)
+{
+	if (!session)
+		return;
+
+	if (session->watch > 0) {
+		g_source_remove(session->watch);
+		session->watch = 0;
+	}
+
+	if (session->io) {
+		g_io_channel_unref(session->io);
+		session->io = NULL;
+	}
+
+	bnep_if_down(session->iface);
+	bnep_conndel(&session->dst_addr);
+}
+
+void bnep_set_disconnect(struct bnep *session, bnep_disconnect_cb disconn_cb,
+								void *data)
+{
+	if (!session || !disconn_cb)
+		return;
+
+	if (!session->disconn_cb && !session->disconn_data) {
+		session->disconn_cb = disconn_cb;
+		session->disconn_data = data;
+	}
+}
+
+static int bnep_add_to_bridge(const char *devname, const char *bridge)
 {
 	int ifindex;
 	struct ifreq ifr;
@@ -437,7 +516,7 @@ int bnep_add_to_bridge(const char *devname, const char *bridge)
 	return 0;
 }
 
-int bnep_del_from_bridge(const char *devname, const char *bridge)
+static int bnep_del_from_bridge(const char *devname, const char *bridge)
 {
 	int ifindex = if_nametoindex(devname);
 	struct ifreq ifr;
@@ -464,4 +543,120 @@ int bnep_del_from_bridge(const char *devname, const char *bridge)
 	info("bridge %s: interface %s removed", bridge, devname);
 
 	return 0;
+}
+
+int bnep_server_add(int sk, uint16_t dst, char *bridge, char *iface,
+						const bdaddr_t *addr)
+{
+	if (!bridge || !bridge || !iface || !addr)
+		return -EINVAL;
+
+	if (bnep_connadd(sk, dst, iface) < 0) {
+		error("Can't add connection to the bridge %s: %s(%d)",
+						bridge, strerror(errno), errno);
+		return -errno;
+	}
+
+	if (bnep_add_to_bridge(iface, bridge) < 0) {
+		error("Can't add %s to the bridge %s: %s(%d)",
+					iface, bridge, strerror(errno), errno);
+		bnep_conndel(addr);
+		return -errno;
+	}
+
+	if (bnep_if_up(iface) < 0) {
+		error("Can't up the interface %s: %s(%d)",
+						iface, strerror(errno), errno);
+		return -errno;
+	}
+
+	return 0;
+}
+
+void bnep_server_delete(char *bridge, char *iface, const bdaddr_t *addr)
+{
+	if (!bridge || !iface || !addr)
+		return;
+
+	bnep_del_from_bridge(iface, bridge);
+	bnep_if_down(iface);
+	bnep_conndel(addr);
+}
+
+ssize_t bnep_send_ctrl_rsp(int sk, uint8_t type, uint8_t ctrl, uint16_t resp)
+{
+	struct bnep_control_rsp rsp;
+
+	rsp.type = type;
+	rsp.ctrl = ctrl;
+	rsp.resp = htons(resp);
+
+	return send(sk, &rsp, sizeof(rsp), 0);
+}
+
+uint16_t bnep_setup_chk(uint16_t dst, uint16_t src)
+{
+	/* Allowed PAN Profile scenarios */
+	switch (dst) {
+	case BNEP_SVC_NAP:
+	case BNEP_SVC_GN:
+		if (src == BNEP_SVC_PANU)
+			return 0;
+		return BNEP_CONN_INVALID_SRC;
+	case BNEP_SVC_PANU:
+		if (src == BNEP_SVC_PANU ||  src == BNEP_SVC_GN ||
+							src == BNEP_SVC_NAP)
+			return 0;
+
+		return BNEP_CONN_INVALID_SRC;
+	}
+
+	return BNEP_CONN_INVALID_DST;
+}
+
+uint16_t bnep_setup_decode(struct bnep_setup_conn_req *req, uint16_t *dst,
+								uint16_t *src)
+{
+	const uint8_t bt_base[] = { 0x00, 0x00, 0x10, 0x00, 0x80, 0x00,
+					0x00, 0x80, 0x5F, 0x9B, 0x34, 0xFB };
+	uint8_t *dest, *source;
+	uint32_t val;
+
+	dest = req->service;
+	source = req->service + req->uuid_size;
+
+	switch (req->uuid_size) {
+	case 2: /* UUID16 */
+		*dst = bt_get_be16(dest);
+		*src = bt_get_be16(source);
+		break;
+	case 16: /* UUID128 */
+		/* Check that the bytes in the UUID, except the service ID
+		 * itself, are correct. The service ID is checked in
+		 * bnep_setup_chk(). */
+		if (memcmp(&dest[4], bt_base, sizeof(bt_base)) != 0)
+			return BNEP_CONN_INVALID_DST;
+		if (memcmp(&source[4], bt_base, sizeof(bt_base)) != 0)
+			return BNEP_CONN_INVALID_SRC;
+
+		/* Intentional no-break */
+
+	case 4: /* UUID32 */
+		val = bt_get_be32(dest);
+		if (val > 0xffff)
+			return BNEP_CONN_INVALID_DST;
+
+		*dst = val;
+
+		val = bt_get_be32(source);
+		if (val > 0xffff)
+			return BNEP_CONN_INVALID_SRC;
+
+		*src = val;
+		break;
+	default:
+		return BNEP_CONN_INVALID_SVC;
+	}
+
+	return BNEP_SUCCESS;
 }

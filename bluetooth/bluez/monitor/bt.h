@@ -918,8 +918,8 @@ struct bt_hci_cmd_set_afh_host_classification {
 
 #define BT_HCI_CMD_READ_INQUIRY_SCAN_TYPE	0x0c42
 struct bt_hci_rsp_read_inquiry_scan_type {
-	uint8_t status;
-	uint8_t type;
+	uint8_t  status;
+	uint8_t  type;
 } __attribute__ ((packed));
 
 #define BT_HCI_CMD_WRITE_INQUIRY_SCAN_TYPE	0x0c43
@@ -2023,6 +2023,12 @@ struct bt_hci_evt_truncated_page_complete {
 #define BT_HCI_EVT_SLAVE_BROADCAST_CHANNEL_MAP_CHANGE	0x55
 struct bt_hci_evt_slave_broadcast_channel_map_change {
 	uint8_t  map[10];
+} __attribute__ ((packed));
+
+#define BT_HCI_EVT_INQUIRY_RESPONSE_NOTIFY	0x56
+struct bt_hci_evt_inquiry_response_notify {
+	uint8_t  lap[3];
+	int8_t   rssi;
 } __attribute__ ((packed));
 
 #define BT_HCI_EVT_AUTH_PAYLOAD_TIMEOUT_EXPIRED	0x57

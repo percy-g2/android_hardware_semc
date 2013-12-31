@@ -44,6 +44,7 @@
 #include "display.h"
 #include "bt.h"
 #include "ll.h"
+#include "hwdb.h"
 #include "uuid.h"
 #include "l2cap.h"
 #include "control.h"
@@ -394,27 +395,29 @@ static void print_reason(uint8_t reason)
 	print_error("Reason", reason);
 }
 
-static void print_bdaddr(const uint8_t *bdaddr)
-{
-	print_field("Address: %2.2X:%2.2X:%2.2X:%2.2X:%2.2X:%2.2X"
-					" (OUI %2.2X-%2.2X-%2.2X)",
-					bdaddr[5], bdaddr[4], bdaddr[3],
-					bdaddr[2], bdaddr[1], bdaddr[0],
-					bdaddr[5], bdaddr[4], bdaddr[3]);
-}
-
 static void print_addr(const char *label, const uint8_t *addr,
 						uint8_t addr_type)
 {
 	const char *str;
+	char *company;
 
 	switch (addr_type) {
 	case 0x00:
-		print_field("%s: %2.2X:%2.2X:%2.2X:%2.2X:%2.2X:%2.2X"
-				" (OUI %2.2X-%2.2X-%2.2X)", label,
-					addr[5], addr[4], addr[3],
-					addr[2], addr[1], addr[0],
-					addr[5], addr[4], addr[3]);
+		if (!hwdb_get_company(addr, &company))
+			company = NULL;
+
+		if (company)
+			print_field("%s: %2.2X:%2.2X:%2.2X:%2.2X:%2.2X:%2.2X"
+					" (%s)", label, addr[5], addr[4],
+							addr[3], addr[2],
+							addr[1], addr[0],
+							company);
+		else
+			print_field("%s: %2.2X:%2.2X:%2.2X:%2.2X:%2.2X:%2.2X"
+					" (OUI %2.2X-%2.2X-%2.2X)", label,
+						addr[5], addr[4], addr[3],
+						addr[2], addr[1], addr[0],
+						addr[5], addr[4], addr[3]);
 		break;
 	case 0x01:
 		switch ((addr[5] & 0xc0) >> 6) {
@@ -461,6 +464,11 @@ static void print_addr_type(const char *label, uint8_t addr_type)
 	}
 
 	print_field("%s: %s (0x%2.2x)", label, str, addr_type);
+}
+
+static void print_bdaddr(const uint8_t *bdaddr)
+{
+	print_addr("Address", bdaddr, 0x00);
 }
 
 static void print_lt_addr(uint8_t lt_addr)
@@ -2445,35 +2453,63 @@ static void print_manufacturer_data(const void *data, uint8_t data_len)
 
 static void print_device_id(const void *data, uint8_t data_len)
 {
-	uint16_t source;
+	uint16_t source, vendor, product, version;
+	char modalias[26], *vendor_str, *product_str;
 	const char *str;
 
 	if (data_len < 8)
 		return;
 
 	source = bt_get_le16(data);
+	vendor = bt_get_le16(data + 2);
+	product = bt_get_le16(data + 4);
+	version = bt_get_le16(data + 6);
 
 	switch (source) {
 	case 0x0001:
 		str = "Bluetooth SIG assigned";
+		sprintf(modalias, "bluetooth:v%04Xp%04Xd%04X",
+						vendor, product, version);
 		break;
 	case 0x0002:
 		str = "USB Implementer's Forum assigned";
+		sprintf(modalias, "usb:v%04Xp%04Xd%04X",
+						vendor, product, version);
 		break;
 	default:
 		str = "Reserved";
+		modalias[0] = '\0';
 		break;
 	}
 
 	print_field("Device ID: %s (0x%4.4x)", str, source);
 
-	if (source == 0x0001)
-		packet_print_company("  Vendor", bt_get_le16(data + 2));
-	else
-		print_field("  Vendor: 0x%4.4x", bt_get_le16(data + 2));
+	if (!hwdb_get_vendor_model(modalias, &vendor_str, &product_str)) {
+		vendor_str = NULL;
+		product_str = NULL;
+	}
 
-	print_field("  Product: 0x%4.4x", bt_get_le16(data + 4));
-	print_field("  Version: 0x%4.4x", bt_get_le16(data + 6));
+	if (source != 0x0001) {
+		if (vendor_str)
+			print_field("  Vendor: %s (0x%4.4x)",
+						vendor_str, vendor);
+		else
+			print_field("  Vendor: 0x%4.4x", vendor);
+	} else
+		packet_print_company("  Vendor", vendor);
+
+	if (product_str)
+		print_field("  Product: %s (0x%4.4x)", product_str, product);
+	else
+		print_field("  Product: 0x%4.4x", product);
+
+	print_field("  Version: %u.%u.%u (0x%4.4x)",
+					(version & 0xff00) >> 8,
+					(version & 0x00f0) >> 4,
+					(version & 0x000f), version);
+
+	free(vendor_str);
+	free(product_str);
 }
 
 static void print_uuid16_list(const char *label, const void *data,
@@ -6084,6 +6120,13 @@ static void cmd_complete_evt(const void *data, uint8_t size)
 		return;
 	}
 
+	if (opcode_data->rsp_size > 1 && size - 3 == 1) {
+		uint8_t status = *((uint8_t *) (data + 3));
+
+		print_status(status);
+		return;
+	}
+
 	if (opcode_data->rsp_fixed) {
 		if (size - 3 != opcode_data->rsp_size) {
 			print_text(COLOR_ERROR, "invalid packet size");
@@ -6670,6 +6713,14 @@ static void slave_broadcast_channel_map_change_evt(const void *data, uint8_t siz
 	print_channel_map(evt->map);
 }
 
+static void inquiry_response_notify_evt(const void *data, uint8_t size)
+{
+	const struct bt_hci_evt_inquiry_response_notify *evt = data;
+
+	print_iac(evt->lap);
+	print_rssi(evt->rssi);
+}
+
 static void auth_payload_timeout_expired_evt(const void *data, uint8_t size)
 {
 	const struct bt_hci_evt_auth_payload_timeout_expired *evt = data;
@@ -7003,7 +7054,8 @@ static const struct event_data event_table[] = {
 				slave_page_response_timeout_evt, 0, true },
 	{ 0x55, "Connectionless Slave Broadcast Channel Map Change",
 				slave_broadcast_channel_map_change_evt, 10, true },
-	{ 0x56, "Inquiry Response Notification" },
+	{ 0x56, "Inquiry Response Notification",
+				inquiry_response_notify_evt, 4, true },
 	{ 0x57, "Authenticated Payload Timeout Expired",
 				auth_payload_timeout_expired_evt, 2, true },
 	{ 0xfe, "Testing" },

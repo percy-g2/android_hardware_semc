@@ -1,5 +1,5 @@
 AC_PREREQ(2.60)
-AC_INIT(bluez, 5.12)
+AC_INIT(bluez, 5.13)
 
 AM_INIT_AUTOMAKE([foreign subdir-objects color-tests silent-rules
 					tar-pax no-dist-gzip dist-xz])
@@ -251,5 +251,8 @@ AC_ARG_ENABLE(android, AC_HELP_STRING([--enable-android],
 			[enable BlueZ for Android]),
 					[enable_android=${enableval}])
 AM_CONDITIONAL(ANDROID, test "${enable_android}" = "yes")
+
+AC_DEFINE_UNQUOTED(ANDROID_STORAGEDIR, "${storagedir}/android",
+			[Directory for the Android daemon storage files])
 
 AC_OUTPUT(Makefile src/bluetoothd.8 lib/bluez.pc)

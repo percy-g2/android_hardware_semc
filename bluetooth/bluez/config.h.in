@@ -1,5 +1,8 @@
 /* config.h.in.  Generated from configure.ac by autoheader.  */
 
+/* Directory for the Android daemon storage files */
+#undef ANDROID_STORAGEDIR
+
 /* Directory for the configuration files */
 #undef CONFIGDIR
 

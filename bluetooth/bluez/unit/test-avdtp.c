@@ -41,6 +41,7 @@
 
 struct test_pdu {
 	bool valid;
+	bool fragmented;
 	const uint8_t *data;
 	size_t size;
 };
@@ -55,6 +56,14 @@ struct test_data {
 #define raw_pdu(args...) \
 	{							\
 		.valid = true,					\
+		.data = data(args),				\
+		.size = sizeof(data(args)),			\
+	}
+
+#define frg_pdu(args...) \
+	{							\
+		.valid = true,					\
+		.fragmented = true,				\
 		.data = data(args),				\
 		.size = sizeof(data(args)),			\
 	}
@@ -77,6 +86,7 @@ struct context {
 	struct avdtp_local_sep *sep;
 	struct avdtp_stream *stream;
 	guint source;
+	guint process;
 	int fd;
 	int mtu;
 	gboolean pending_open;
@@ -104,6 +114,9 @@ static gboolean context_quit(gpointer user_data)
 {
 	struct context *context = user_data;
 
+	if (context->process > 0)
+		g_source_remove(context->process);
+
 	g_main_loop_quit(context->main_loop);
 
 	return FALSE;
@@ -122,10 +135,13 @@ static gboolean send_pdu(gpointer user_data)
 	if (g_test_verbose())
 		util_hexdump('<', pdu->data, len, test_debug, "AVDTP: ");
 
-	g_assert(len == (ssize_t) pdu->size);
+	g_assert_cmpint(len, ==, pdu->size);
 
 	if (g_str_equal(context->data->test_name, "/TP/SIG/SMG/BI-02-C"))
 		g_timeout_add_seconds(1, context_quit, context);
+
+	if (pdu->fragmented)
+		return send_pdu(user_data);
 
 	return FALSE;
 }
@@ -137,7 +153,7 @@ static void context_process(struct context *context)
 		return;
 	}
 
-	g_idle_add(send_pdu, context);
+	context->process = g_idle_add(send_pdu, context);
 }
 
 static gboolean transport_open(struct avdtp_stream *stream)
@@ -174,7 +190,7 @@ static gboolean test_handler(GIOChannel *channel, GIOCondition cond,
 	if (g_test_verbose())
 		util_hexdump('>', buf, len, test_debug, "AVDTP: ");
 
-	g_assert((size_t) len == pdu->size);
+	g_assert_cmpint(len, ==, pdu->size);
 
 	g_assert(memcmp(buf, pdu->data, pdu->size) == 0);
 
@@ -191,12 +207,15 @@ static gboolean test_handler(GIOChannel *channel, GIOCondition cond,
 		g_assert_cmpint(ret, ==, 0);
 	}
 
-	context_process(context);
+	if (!pdu->fragmented)
+		context_process(context);
 
 	return TRUE;
 }
 
-static struct context *create_context(uint16_t version, gconstpointer data)
+
+static struct context *context_new(uint16_t version, uint16_t imtu,
+					uint16_t omtu, gconstpointer data)
 {
 	struct context *context = g_new0(struct context, 1);
 	GIOChannel *channel;
@@ -208,7 +227,7 @@ static struct context *create_context(uint16_t version, gconstpointer data)
 	err = socketpair(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC, 0, sv);
 	g_assert(err == 0);
 
-	context->session = avdtp_new(sv[0], 672, 672, version);
+	context->session = avdtp_new(sv[0], imtu, omtu, version);
 	g_assert(context->session != NULL);
 
 	channel = g_io_channel_unix_new(sv[1]);
@@ -230,6 +249,11 @@ static struct context *create_context(uint16_t version, gconstpointer data)
 	return context;
 }
 
+static struct context *create_context(uint16_t version, gconstpointer data)
+{
+	return context_new(version, 672, 672, data);
+}
+
 static void execute_context(struct context *context)
 {
 	g_main_loop_run(context->main_loop);
@@ -245,8 +269,8 @@ static void execute_context(struct context *context)
 
 static gboolean sep_getcap_ind(struct avdtp *session,
 					struct avdtp_local_sep *sep,
-					gboolean get_all, GSList **caps,
-					uint8_t *err, void *user_data)
+					GSList **caps, uint8_t *err,
+					void *user_data)
 {
 	struct avdtp_service_capability *media_transport, *media_codec;
 	struct avdtp_media_codec_capability *codec_caps;
@@ -500,6 +524,21 @@ static void test_server_1_3(gconstpointer data)
 	avdtp_unregister_sep(sep);
 }
 
+static void test_server_1_3_sink(gconstpointer data)
+{
+	struct context *context = create_context(0x0103, data);
+	struct avdtp_local_sep *sep;
+
+	sep = avdtp_register_sep(AVDTP_SEP_TYPE_SINK, AVDTP_MEDIA_TYPE_AUDIO,
+					0x00, TRUE, &sep_ind, NULL, context);
+
+	g_idle_add(send_pdu, context);
+
+	execute_context(context);
+
+	avdtp_unregister_sep(sep);
+}
+
 static void test_server_0_sep(gconstpointer data)
 {
 	struct context *context = create_context(0x0100, data);
@@ -507,6 +546,62 @@ static void test_server_0_sep(gconstpointer data)
 	g_idle_add(send_pdu, context);
 
 	execute_context(context);
+}
+
+static gboolean sep_getcap_ind_frg(struct avdtp *session,
+					struct avdtp_local_sep *sep,
+					GSList **caps, uint8_t *err,
+					void *user_data)
+{
+	struct avdtp_service_capability *media_transport, *media_codec;
+	struct avdtp_service_capability *content_protection;
+	struct avdtp_media_codec_capability *codec_caps;
+	uint8_t cap[4] = { 0xff, 0xff, 2, 64 };
+	uint8_t frg_cap[96] = {};
+
+	*caps = NULL;
+
+	media_transport = avdtp_service_cap_new(AVDTP_MEDIA_TRANSPORT,
+						NULL, 0);
+
+	*caps = g_slist_append(*caps, media_transport);
+
+	codec_caps = g_malloc0(sizeof(*codec_caps) + sizeof(cap));
+	codec_caps->media_type = AVDTP_MEDIA_TYPE_AUDIO;
+	codec_caps->media_codec_type = 0x00;
+	memcpy(codec_caps->data, cap, sizeof(cap));
+
+	media_codec = avdtp_service_cap_new(AVDTP_MEDIA_CODEC, codec_caps,
+					sizeof(*codec_caps) + sizeof(cap));
+
+	*caps = g_slist_append(*caps, media_codec);
+	g_free(codec_caps);
+
+	content_protection = avdtp_service_cap_new(AVDTP_CONTENT_PROTECTION,
+						frg_cap, sizeof(frg_cap));
+	*caps = g_slist_append(*caps, content_protection);
+
+	return TRUE;
+}
+
+static struct avdtp_sep_ind sep_ind_frg = {
+	.get_capability		= sep_getcap_ind_frg,
+};
+
+static void test_server_frg(gconstpointer data)
+{
+	struct context *context = context_new(0x0100, 48, 48, data);
+	struct avdtp_local_sep *sep;
+
+	sep = avdtp_register_sep(AVDTP_SEP_TYPE_SOURCE, AVDTP_MEDIA_TYPE_AUDIO,
+						0x00, TRUE, &sep_ind_frg,
+						NULL, context);
+
+	g_idle_add(send_pdu, context);
+
+	execute_context(context);
+
+	avdtp_unregister_sep(sep);
 }
 
 static void discover_cb(struct avdtp *session, GSList *seps,
@@ -543,6 +638,12 @@ static void discover_cb(struct avdtp *session, GSList *seps,
 
 	g_assert(err == NULL);
 	g_assert_cmpint(g_slist_length(seps), !=, 0);
+
+	if (g_str_equal(context->data->test_name, "/TP/SIG/FRA/BV-02-C")) {
+		g_assert(err == NULL);
+		context_quit(context);
+		return;
+	}
 
 	rsep = avdtp_find_remote_sep(session, context->sep);
 	g_assert(rsep != NULL);
@@ -590,6 +691,23 @@ static void test_client(gconstpointer data)
 static void test_client_1_3(gconstpointer data)
 {
 	struct context *context = create_context(0x0103, data);
+	struct avdtp_local_sep *sep;
+
+	sep = avdtp_register_sep(AVDTP_SEP_TYPE_SINK, AVDTP_MEDIA_TYPE_AUDIO,
+					0x00, TRUE, NULL, &sep_cfm,
+					context);
+	context->sep = sep;
+
+	avdtp_discover(context->session, discover_cb, context);
+
+	execute_context(context);
+
+	avdtp_unregister_sep(sep);
+}
+
+static void test_client_frg(gconstpointer data)
+{
+	struct context *context = context_new(0x0100, 48, 48, data);
 	struct avdtp_local_sep *sep;
 
 	sep = avdtp_register_sep(AVDTP_SEP_TYPE_SINK, AVDTP_MEDIA_TYPE_AUDIO,
@@ -805,7 +923,7 @@ int main(int argc, char *argv[])
 			raw_pdu(0x02, 0x01, 0x04, 0x00),
 			raw_pdu(0x10, 0x0c, 0x04),
 			raw_pdu(0x12, 0x0c, 0x01, 0x00, 0x07, 0x06, 0x00, 0x00,
-				0xff, 0xff, 0x02, 0x40));
+				0xff, 0xff, 0x02, 0x40, 0x08, 0x00));
 	define_test("/TP/SIG/SMG/BV-27-C", test_server_1_3,
 			raw_pdu(0x00, 0x01),
 			raw_pdu(0x02, 0x01, 0x04, 0x00),
@@ -1085,6 +1203,129 @@ int main(int argc, char *argv[])
 				0x06, 0x00, 0x00, 0xff, 0xff, 0x02, 0x40),
 			raw_pdu(0xa0, 0x03, 0x04, 0x04, 0x01, 0x00, 0x07, 0x06,
 				0x00, 0x00, 0x21, 0x02, 0x02, 0x20));
+
+	/*
+	 * Signaling Message Fragmentation Service
+	 *
+	 * verify that the IUT (INT and ACP) fragments the signaling messages
+	 * that cannot fit in a single L2CAP packet.
+	 */
+	define_test("/TP/SIG/FRA/BV-01-C", test_server_frg,
+			raw_pdu(0x00, 0x01),
+			raw_pdu(0x02, 0x01, 0x04, 0x00),
+			raw_pdu(0x10, 0x02, 0x04),
+			frg_pdu(0x16, 0x03, 0x02, 0x01, 0x00, 0x07, 0x06, 0x00,
+				0x00, 0xff, 0xff, 0x02, 0x40, 0x04, 0x60, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00),
+			frg_pdu(0x1a, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00),
+			raw_pdu(0x1e, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00));
+	define_test("/TP/SIG/FRA/BV-02-C", test_client_frg,
+			raw_pdu(0xb0, 0x01),
+			raw_pdu(0xb2, 0x01, 0x04, 0x00),
+			raw_pdu(0xc0, 0x02, 0x04),
+			frg_pdu(0xc6, 0x03, 0x02, 0x01, 0x00, 0x07, 0x06, 0x00,
+				0x00, 0xff, 0xff, 0x02, 0x40, 0x04, 0x60, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00),
+			frg_pdu(0xca, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00),
+			raw_pdu(0xce, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+				0x00));
+
+	/*
+	 * Delay Reporting
+	 *
+	 * Verify that the stream management signaling procedure of delay
+	 * reporting is implemented according to its specification in AVDTP.
+	 */
+	define_test("/TP/SIG/SYN/BV-01-C", test_server_1_3_sink,
+			raw_pdu(0x00, 0x01),
+			raw_pdu(0x02, 0x01, 0x04, 0x08),
+			raw_pdu(0x10, 0x0c, 0x04),
+			raw_pdu(0x12, 0x0c, 0x01, 0x00, 0x07, 0x06, 0x00, 0x00,
+				0xff, 0xff, 0x02, 0x40, 0x08, 0x00));
+	define_test("/TP/SIG/SYN/BV-02-C", test_client_1_3,
+			raw_pdu(0xd0, 0x01),
+			raw_pdu(0xd2, 0x01, 0x04, 0x00),
+			raw_pdu(0xe0, 0x0c, 0x04),
+			raw_pdu(0xe2, 0x0c, 0x01, 0x00, 0x07, 0x06, 0x00, 0x00,
+				0xff, 0xff, 0x02, 0x40, 0x0f, 0x00, 0x08, 0x00),
+			raw_pdu(0xf0, 0x03, 0x04, 0x04, 0x01, 0x00, 0x07, 0x06,
+				0x00, 0x00, 0x21, 0x02, 0x02, 0x20, 0x08,
+				0x00));
+	define_test("/TP/SIG/SYN/BV-03-C", test_server_1_3_sink,
+			raw_pdu(0x00, 0x01),
+			raw_pdu(0x02, 0x01, 0x04, 0x08),
+			raw_pdu(0x10, 0x0c, 0x04),
+			raw_pdu(0x12, 0x0c, 0x01, 0x00, 0x07, 0x06, 0x00, 0x00,
+				0xff, 0xff, 0x02, 0x40, 0x08, 0x00),
+			raw_pdu(0x20, 0x03, 0x04, 0x04, 0x01, 0x00, 0x07, 0x06,
+				0x00, 0x00, 0x21, 0x02, 0x02, 0x20, 0x08,
+				0x00),
+			raw_pdu(0x22, 0x03),
+			raw_pdu(0x00, 0x0d, 0x04, 0x00, 0x00));
+	define_test("/TP/SIG/SYN/BV-04-C", test_client_1_3,
+			raw_pdu(0x10, 0x01),
+			raw_pdu(0x12, 0x01, 0x04, 0x00),
+			raw_pdu(0x20, 0x0c, 0x04),
+			raw_pdu(0x22, 0x0c, 0x01, 0x00, 0x07, 0x06, 0x00, 0x00,
+				0xff, 0xff, 0x02, 0x40, 0x0f, 0x00, 0x08, 0x00),
+			raw_pdu(0x30, 0x03, 0x04, 0x04, 0x01, 0x00, 0x07, 0x06,
+				0x00, 0x00, 0x21, 0x02, 0x02, 0x20, 0x08,
+				0x00),
+			raw_pdu(0x32, 0x03),
+			raw_pdu(0x40, 0x0d, 0x04, 0x00, 0x00));
+	define_test("/TP/SIG/SYN/BV-05-C", test_server_1_3,
+			raw_pdu(0x00, 0x01),
+			raw_pdu(0x02, 0x01, 0x04, 0x00),
+			raw_pdu(0x10, 0x0c, 0x04),
+			raw_pdu(0x12, 0x0c, 0x01, 0x00, 0x07, 0x06, 0x00, 0x00,
+				0xff, 0xff, 0x02, 0x40, 0x08, 0x00),
+			raw_pdu(0x20, 0x03, 0x04, 0x04, 0x01, 0x00, 0x07, 0x06,
+				0x00, 0x00, 0x21, 0x02, 0x02, 0x20, 0x08,
+				0x00),
+			raw_pdu(0x22, 0x03),
+			raw_pdu(0x30, 0x06, 0x04),
+			raw_pdu(0x32, 0x06),
+			raw_pdu(0x40, 0x0d, 0x04, 0x00, 0x00),
+			raw_pdu(0x42, 0x0d));
+	define_test("/TP/SIG/SYN/BV-06-C", test_server_1_3,
+			raw_pdu(0x00, 0x01),
+			raw_pdu(0x02, 0x01, 0x04, 0x00),
+			raw_pdu(0x10, 0x0c, 0x04),
+			raw_pdu(0x12, 0x0c, 0x01, 0x00, 0x07, 0x06, 0x00, 0x00,
+				0xff, 0xff, 0x02, 0x40, 0x08, 0x00),
+			raw_pdu(0x20, 0x03, 0x04, 0x04, 0x01, 0x00, 0x07, 0x06,
+				0x00, 0x00, 0x21, 0x02, 0x02, 0x20, 0x08,
+				0x00),
+			raw_pdu(0x22, 0x03),
+			raw_pdu(0x30, 0x06, 0x04),
+			raw_pdu(0x32, 0x06),
+			raw_pdu(0x40, 0x07, 0x04),
+			raw_pdu(0x42, 0x07),
+			raw_pdu(0x50, 0x0d, 0x04, 0x00, 0x00),
+			raw_pdu(0x52, 0x0d));
 
 	return g_test_run();
 }

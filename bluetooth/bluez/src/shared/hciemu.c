@@ -31,6 +31,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdbool.h>
+#include <errno.h>
 #include <sys/socket.h>
 
 #include <glib.h>
@@ -216,6 +217,7 @@ static bool create_vhci(struct hciemu *hciemu)
 
 	fd = open("/dev/vhci", O_RDWR | O_NONBLOCK | O_CLOEXEC);
 	if (fd < 0) {
+		perror("Opening /dev/vhci failed");
 		btdev_destroy(btdev);
 		return false;
 	}
@@ -341,7 +343,7 @@ void hciemu_unref(struct hciemu *hciemu)
 	if (!hciemu)
 		return;
 
-	if (__sync_sub_and_fetch(&hciemu->ref_count, 1) > 0)
+	if (__sync_sub_and_fetch(&hciemu->ref_count, 1))
 		return;
 
 	g_list_foreach(hciemu->post_command_hooks, destroy_command_hook, NULL);

@@ -20,11 +20,15 @@
 #include <stdbool.h>
 #include <string.h>
 
+#include <cutils/properties.h>
+
 #include "hal-log.h"
 #include "hal.h"
 #include "hal-msg.h"
 #include "hal-ipc.h"
 #include "hal-utils.h"
+
+#define SNOOP_SERVICE_NAME "bluetoothd_snoop"
 
 static const bt_callbacks_t *bt_hal_cbacks = NULL;
 
@@ -141,8 +145,39 @@ static void device_props_to_hal(bt_property_t *send_props,
 			enum_prop_to_hal(send_props[i], prop,
 							bt_device_type_t);
 			break;
-		case HAL_PROP_DEVICE_SERVICE_REC:
+#if PLATFORM_SDK_VERSION > 17
 		case HAL_PROP_DEVICE_VERSION_INFO:
+		{
+			static bt_remote_version_t e;
+			const struct hal_prop_device_info *p;
+
+			send_props[i].val = &e;
+			send_props[i].len = sizeof(e);
+
+			p = (struct hal_prop_device_info *) prop->val;
+
+			e.manufacturer = p->manufacturer;
+			e.sub_ver = p->sub_version;
+			e.version = p->version;
+		}
+			break;
+#endif
+		case HAL_PROP_DEVICE_SERVICE_REC:
+		{
+			static bt_service_record_t e;
+			const struct hal_prop_device_service_rec *p;
+
+			send_props[i].val = &e;
+			send_props[i].len = sizeof(e);
+
+			p = (struct hal_prop_device_service_rec *) prop->val;
+
+			memset(&e, 0, sizeof(e));
+			memcpy(&e.channel, &p->channel, sizeof(e.channel));
+			memcpy(e.uuid.uu, p->uuid, sizeof(e.uuid.uu));
+			memcpy(e.name, p->name, p->name_len);
+		}
+			break;
 		default:
 			send_props[i].len = prop->len;
 			send_props[i].val = prop->val;
@@ -201,7 +236,7 @@ static void handle_pin_request(void *buf, uint16_t len)
 	DBG("");
 
 	if (bt_hal_cbacks->pin_request_cb)
-		bt_hal_cbacks->pin_request_cb(addr, name, ev->class_of_dev, NULL);
+		bt_hal_cbacks->pin_request_cb(addr, name, ev->class_of_dev, 0);
 }
 
 static void handle_ssp_request(void *buf, uint16_t len)
@@ -307,6 +342,18 @@ static void handle_dut_mode_receive(void *buf, uint16_t len)
 		bt_hal_cbacks->dut_mode_recv_cb(ev->opcode, ev->data, ev->len);
 }
 
+#if PLATFORM_SDK_VERSION > 17
+static void handle_le_test_mode(void *buf, uint16_t len)
+{
+	struct hal_ev_le_test_mode *ev = buf;
+
+	DBG("");
+
+	if (bt_hal_cbacks->le_test_mode_cb)
+		bt_hal_cbacks->le_test_mode_cb(ev->status, ev->num_packets);
+}
+#endif
+
 /* handlers will be called from notification thread context,
  * index in table equals to 'opcode - HAL_MINIMUM_EVENT' */
 static const struct hal_ipc_handler ev_handlers[] = {
@@ -363,6 +410,13 @@ static const struct hal_ipc_handler ev_handlers[] = {
 		.var_len = true,
 		.data_len = sizeof(struct hal_ev_dut_mode_receive),
 	},
+#if PLATFORM_SDK_VERSION > 17
+	{	/* HAL_EV_LE_TEST_MODE */
+		.handler = handle_le_test_mode,
+		.var_len = false,
+		.data_len = sizeof(struct hal_ev_le_test_mode),
+	}
+#endif
 };
 
 static int init(bt_callbacks_t *callbacks)
@@ -752,6 +806,43 @@ static int dut_mode_send(uint16_t opcode, uint8_t *buf, uint8_t len)
 					sizeof(cmd_buf), cmd, 0, NULL, NULL);
 }
 
+#if PLATFORM_SDK_VERSION > 17
+static int le_test_mode(uint16_t opcode, uint8_t *buf, uint8_t len)
+{
+	uint8_t cmd_buf[sizeof(struct hal_cmd_le_test_mode) + len];
+	struct hal_cmd_le_test_mode *cmd = (void *) cmd_buf;
+
+	DBG("opcode %u len %u", opcode, len);
+
+	if (!interface_ready())
+		return BT_STATUS_NOT_READY;
+
+	cmd->opcode = opcode;
+	cmd->len = len;
+	memcpy(cmd->data, buf, cmd->len);
+
+	return hal_ipc_cmd(HAL_SERVICE_ID_BLUETOOTH, HAL_OP_LE_TEST_MODE,
+					sizeof(cmd_buf), cmd, 0, NULL, NULL);
+}
+#endif
+
+#if PLATFORM_SDK_VERSION > 18
+static int config_hci_snoop_log(uint8_t enable)
+{
+	if (enable && property_set("ctl.start", SNOOP_SERVICE_NAME) < 0) {
+		error("Failed to start service %s", SNOOP_SERVICE_NAME);
+		return BT_STATUS_FAIL;
+	}
+
+	if (!enable && property_set("ctl.stop", SNOOP_SERVICE_NAME) < 0) {
+		error("Failed to stop service %s", SNOOP_SERVICE_NAME);
+		return BT_STATUS_FAIL;
+	}
+
+	return BT_STATUS_SUCCESS;
+}
+#endif
+
 static const bt_interface_t bluetooth_if = {
 	.size = sizeof(bt_interface_t),
 	.init = init,
@@ -775,7 +866,13 @@ static const bt_interface_t bluetooth_if = {
 	.ssp_reply = ssp_reply,
 	.get_profile_interface = get_profile_interface,
 	.dut_mode_configure = dut_mode_configure,
-	.dut_mode_send = dut_mode_send
+	.dut_mode_send = dut_mode_send,
+#if PLATFORM_SDK_VERSION > 17
+	.le_test_mode = le_test_mode,
+#endif
+#if PLATFORM_SDK_VERSION > 18
+	.config_hci_snoop_log = config_hci_snoop_log,
+#endif
 };
 
 static const bt_interface_t *get_bluetooth_interface(void)
@@ -790,6 +887,8 @@ static int close_bluetooth(struct hw_device_t *device)
 	DBG("");
 
 	cleanup();
+
+	free(device);
 
 	return 0;
 }

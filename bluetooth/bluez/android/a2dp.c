@@ -57,7 +57,6 @@ struct a2dp_device {
 	bdaddr_t	dst;
 	uint8_t		state;
 	GIOChannel	*io;
-	guint		watch;
 	struct avdtp	*session;
 };
 
@@ -74,11 +73,10 @@ static void a2dp_device_free(struct a2dp_device *dev)
 	if (dev->session)
 		avdtp_unref(dev->session);
 
-	if (dev->watch > 0)
-		g_source_remove(dev->watch);
-
-	if (dev->io)
+	if (dev->io) {
+		g_io_channel_shutdown(dev->io, FALSE, NULL);
 		g_io_channel_unref(dev->io);
+	}
 
 	devices = g_slist_remove(devices, dev);
 	g_free(dev);
@@ -120,13 +118,11 @@ static void bt_a2dp_notify_state(struct a2dp_device *dev, uint8_t state)
 	a2dp_device_free(dev);
 }
 
-static gboolean watch_cb(GIOChannel *chan, GIOCondition cond, gpointer data)
+static void disconnect_cb(void *user_data)
 {
-	struct a2dp_device *dev = data;
+	struct a2dp_device *dev = user_data;
 
 	bt_a2dp_notify_state(dev, HAL_A2DP_STATE_DISCONNECTED);
-
-	return FALSE;
 }
 
 static void signaling_connect_cb(GIOChannel *chan, GError *err,
@@ -154,12 +150,21 @@ static void signaling_connect_cb(GIOChannel *chan, GError *err,
 		return;
 	}
 
-	/* FIXME: Add proper version */
 	fd = g_io_channel_unix_get_fd(chan);
-	dev->session = avdtp_new(fd, imtu, omtu, 0x0100);
 
-	dev->watch = g_io_add_watch(dev->io, G_IO_HUP | G_IO_ERR | G_IO_NVAL,
-								watch_cb, dev);
+	/* FIXME: Add proper version */
+	dev->session = avdtp_new(fd, imtu, omtu, 0x0100);
+	if (!dev->session) {
+		bt_a2dp_notify_state(dev, HAL_A2DP_STATE_DISCONNECTED);
+		return;
+	}
+
+	avdtp_add_disconnect_cb(dev->session, disconnect_cb, dev);
+
+	if (dev->io) {
+		g_io_channel_unref(dev->io);
+		dev->io = NULL;
+	}
 
 	bt_a2dp_notify_state(dev, HAL_A2DP_STATE_CONNECTED);
 }
@@ -229,14 +234,16 @@ static void bt_a2dp_disconnect(const void *buf, uint16_t len)
 	}
 
 	dev = l->data;
-
-	/* Wait signaling channel to HUP */
-	if (dev->io)
-		g_io_channel_shutdown(dev->io, TRUE, NULL);
-
-	bt_a2dp_notify_state(dev, HAL_A2DP_STATE_DISCONNECTING);
-
 	status = HAL_STATUS_SUCCESS;
+
+	if (dev->io) {
+		bt_a2dp_notify_state(dev, HAL_A2DP_STATE_DISCONNECTED);
+		goto failed;
+	}
+
+	/* Wait AVDTP session to shutdown */
+	avdtp_shutdown(dev->session);
+	bt_a2dp_notify_state(dev, HAL_A2DP_STATE_DISCONNECTING);
 
 failed:
 	ipc_send_rsp(HAL_SERVICE_ID_A2DP, HAL_OP_A2DP_DISCONNECT, status);

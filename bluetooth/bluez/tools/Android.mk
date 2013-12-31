@@ -16,7 +16,7 @@ LOCAL_SRC_FILES:= \
 	hciattach_intel.c
 
 LOCAL_CFLAGS:= \
-	-DVERSION=\"5.12\" \
+	-DVERSION=\"5.13\" \
 	-Wno-missing-field-initializers \
 	-Wno-pointer-arith
 
@@ -44,7 +44,7 @@ LOCAL_SRC_FILES:= \
 	csr.c
 
 LOCAL_CFLAGS:= \
-	-DVERSION=\"5.12\" \
+	-DVERSION=\"5.13\" \
 	-Wno-missing-field-initializers \
 	-Wno-pointer-arith
 
@@ -73,7 +73,7 @@ LOCAL_SRC_FILES:= \
 	../src/oui.c
 
 LOCAL_CFLAGS:= \
-	-DVERSION=\"5.12\" \
+	-DVERSION=\"5.13\" \
 	-DSTORAGEDIR=\"/data/misc/bluetoothd\" \
 	-Wno-missing-field-initializers \
 	-Wno-pointer-arith
@@ -127,7 +127,7 @@ LOCAL_SRC_FILES:= \
 	parser/bpa.c
 
 LOCAL_CFLAGS:= \
-	-DVERSION=\"5.12\" \
+	-DVERSION=\"5.13\" \
 	-Wno-missing-field-initializers \
 	-Wno-pointer-arith
 
@@ -155,7 +155,7 @@ LOCAL_SRC_FILES:= \
 	rfcomm.c
 
 LOCAL_CFLAGS:= \
-	-DVERSION=\"5.12\" \
+	-DVERSION=\"5.13\" \
 	-Wno-missing-field-initializers \
 	-Wno-pointer-arith
 
@@ -183,7 +183,7 @@ LOCAL_SRC_FILES:= \
 	rctest.c
 
 LOCAL_CFLAGS:= \
-	-DVERSION=\"5.12\" \
+	-DVERSION=\"5.13\" \
 	-Wno-missing-field-initializers \
 	-Wno-pointer-arith
 
@@ -202,34 +202,6 @@ LOCAL_MODULE:=rctest
 include $(BUILD_EXECUTABLE)
 
 #
-# l2test
-#
-
-include $(CLEAR_VARS)
-
-LOCAL_SRC_FILES:= \
-	l2test.c
-
-LOCAL_CFLAGS:= \
-	-DVERSION=\"5.12\" \
-	-Wno-missing-field-initializers \
-	-Wno-pointer-arith
-
-LOCAL_C_INCLUDES:= \
-	$(LOCAL_PATH)/../ \
-	$(LOCAL_PATH)/../lib \
-	$(LOCAL_PATH)/../tools
-
-LOCAL_SHARED_LIBRARIES := \
-	libbluetooth
-
-LOCAL_MODULE_PATH := $(TARGET_OUT_EXECUTABLES)
-LOCAL_MODULE_TAGS := optional
-LOCAL_MODULE:=l2test
-
-include $(BUILD_EXECUTABLE)
-
-#
 # l2ping
 #
 
@@ -239,7 +211,7 @@ LOCAL_SRC_FILES:= \
 	l2ping.c
 
 LOCAL_CFLAGS:= \
-	-DVERSION=\"5.12\" \
+	-DVERSION=\"5.13\" \
 	-Wno-missing-field-initializers \
 	-Wno-pointer-arith
 
@@ -268,7 +240,7 @@ LOCAL_SRC_FILES:= \
 	../src/sdp-xml.c
 
 LOCAL_CFLAGS:= \
-	-DVERSION=\"5.12\" \
+	-DVERSION=\"5.13\" \
 	-Wno-missing-field-initializers \
 	-Wno-pointer-arith
 
@@ -298,7 +270,7 @@ LOCAL_SRC_FILES:= \
 	ciptool.c
 
 LOCAL_CFLAGS:= \
-	-DVERSION=\"5.12\" \
+	-DVERSION=\"5.13\" \
 	-Wno-missing-field-initializers \
 	-Wno-pointer-arith
 
@@ -333,7 +305,7 @@ LOCAL_SRC_FILES:= \
 	ubcsp.c
 
 LOCAL_CFLAGS:= \
-	-DVERSION=\"5.12\" \
+	-DVERSION=\"5.13\" \
 	-Wno-missing-field-initializers \
 	-Wno-pointer-arith
 
