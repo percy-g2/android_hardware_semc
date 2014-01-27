@@ -11,10 +11,10 @@
 #       adefines.h
 #       minui/lucidaconsole_10x18.h
 diff --git a/bootable/recovery/Android.mk b/bootable/recovery/Android.mk
-index f7b6901..6cdc849 100644
+index 661a103..952fc6e 100644
 --- a/bootable/recovery/Android.mk
 +++ b/bootable/recovery/Android.mk
-@@ -35,6 +35,19 @@ LOCAL_FORCE_STATIC_EXECUTABLE := true
+@@ -37,6 +37,19 @@ LOCAL_FORCE_STATIC_EXECUTABLE := true
  
  RECOVERY_FSTAB_VERSION := 2
  
@@ -47,7 +47,7 @@ index 032c1b3..79502d4 100644
  
  void device_ui_init(UIParameters* ui_parameters) {
 diff --git a/bootable/recovery/extendedcommands.c b/bootable/recovery/extendedcommands.c
-index 82dece3..58a404e 100644
+index dbc0971..00e7c2a 100644
 --- a/bootable/recovery/extendedcommands.c
 +++ b/bootable/recovery/extendedcommands.c
 @@ -32,6 +32,7 @@
@@ -55,31 +55,34 @@ index 82dece3..58a404e 100644
  
  #include "extendedcommands.h"
 +#include "adefines.h"
+ #include "recovery_settings.h"
  #include "nandroid.h"
  #include "mounts.h"
- #include "flashutils/flashutils.h"
-@@ -163,7 +164,7 @@ int install_zip(const char* packagefilepath)
-        }
+@@ -162,7 +163,7 @@ int install_zip(const char* packagefilepath) {
      }
  #endif
+ 
 -    ui_set_background(BACKGROUND_ICON_NONE);
 +    ui_set_background(BACKGROUND_ICON_CLOCKWORK);
      ui_print("\nInstall from sdcard complete.\n");
      return 0;
  }
-@@ -546,28 +547,96 @@ static int control_usb_storage(bool on)
+@@ -509,28 +510,98 @@ static int control_usb_storage(bool on) {
+     return num;
+ }
  
- void show_mount_usb_storage_menu()
- {
+-void show_mount_usb_storage_menu() {
 -    // Enable USB storage using vold
 -    if (!control_usb_storage(true))
 -        return;
 -
--    static const char* headers[] = {  "USB Mass Storage device",
--                                "Leaving this menu unmounts",
--                                "your SD card from your PC.",
--                                "",
--                                NULL
+-    static const char* headers[] = { "USB Mass Storage device",
+-                                     "Leaving this menu unmounts",
+-                                     "your SD card from your PC.",
+-                                     "",
+-                                     NULL
++void show_mount_usb_storage_menu()
++{
 +    static char lun_command_enable_int[120];
 +    static char lun_command_disable_int[100];
 +    static char lun_command_enable_ext[120];
@@ -98,15 +101,16 @@ index 82dece3..58a404e 100644
 -    static char* list[] = { "Unmount", NULL };
 +    static char* sdlist[] = { "Mount int SD",
 +#ifdef HAVE_EXTERNAL_SDCARD
-+                            "Mount ext SD",
++                              "Mount ext SD",
 +#endif
-+                            NULL
++                              NULL
 +    };
  
-     for (;;)
-     {
+-    for (;;) {
 -        int chosen_item = get_menu_selection(headers, list, 0, 0);
 -        if (chosen_item == GO_BACK || chosen_item == 0)
++    for (;;)
++    {
 +        int chosen_item = get_menu_selection(sdheaders, sdlist, 0, 0);
 +        if (chosen_item == GO_BACK)
              break;
@@ -128,9 +132,7 @@ index 82dece3..58a404e 100644
 +
 +                __system(lun_command_enable_int);
 +                static char* list[] = { "Unmount", NULL };
- 
--    // Disable USB storage
--    control_usb_storage(false);
++
 +                for (;;)
 +                {
 +                    int chosen_item = get_menu_selection(headers, list, 0, 0);
@@ -139,7 +141,9 @@ index 82dece3..58a404e 100644
 +                }
 +
 +                // Disable USB storage
-+
+ 
+-    // Disable USB storage
+-    control_usb_storage(false);
 +                __system(lun_command_disable_int);
 +                control_usb_storage(false);
 +                break;
@@ -178,16 +182,16 @@ index 82dece3..58a404e 100644
 +    }
  }
  
- int confirm_selection(const char* title, const char* confirm)
-@@ -1408,11 +1477,44 @@ int can_partition(const char* volume) {
+ int confirm_selection(const char* title, const char* confirm) {
+@@ -1355,11 +1426,44 @@ int can_partition(const char* volume) {
  
  
  #ifdef ENABLE_LOKI
--    #define FIXED_ADVANCED_ENTRIES 8
-+    #define FIXED_ADVANCED_ENTRIES 9
+-#define FIXED_ADVANCED_ENTRIES 8
++#define FIXED_ADVANCED_ENTRIES 9
  #else
--    #define FIXED_ADVANCED_ENTRIES 7
-+    #define FIXED_ADVANCED_ENTRIES 8
+-#define FIXED_ADVANCED_ENTRIES 7
++#define FIXED_ADVANCED_ENTRIES 8
  #endif
  
 +void adjust_time_zone() {
@@ -223,10 +227,10 @@ index 82dece3..58a404e 100644
 +    ui_print("time zone saved.\n");
 +}
 +
- int show_advanced_menu()
- {
+ int show_advanced_menu() {
      char buf[80];
-@@ -1448,6 +1550,9 @@ int show_advanced_menu()
+     int i = 0, j = 0, chosen_item = 0;
+@@ -1391,6 +1495,9 @@ int show_advanced_menu() {
      list[6] = "show log";
  #ifdef ENABLE_LOKI
      list[7] = "toggle loki support";
@@ -236,7 +240,7 @@ index 82dece3..58a404e 100644
  #endif
  
      char list_prefix[] = "partition ";
-@@ -1536,6 +1641,18 @@ int show_advanced_menu()
+@@ -1473,6 +1580,18 @@ int show_advanced_menu() {
              case 7:
                  toggle_loki_support();
                  break;
@@ -256,10 +260,10 @@ index 82dece3..58a404e 100644
              default:
                  partition_sdcard(list[chosen_item] + strlen(list_prefix));
 diff --git a/bootable/recovery/recovery.c b/bootable/recovery/recovery.c
-index 2f82e0f..1d41ada 100644
+index fcaf0a6..a54b2bf 100644
 --- a/bootable/recovery/recovery.c
 +++ b/bootable/recovery/recovery.c
-@@ -775,6 +775,7 @@ wipe_data(int confirm) {
+@@ -773,6 +773,7 @@ wipe_data(int confirm) {
      }
      erase_volume("/sd-ext");
      erase_volume(get_android_secure_path());
@@ -267,7 +271,7 @@ index 2f82e0f..1d41ada 100644
      ui_print("Data wipe complete.\n");
  }
  
-@@ -787,6 +788,17 @@ static void headless_wait() {
+@@ -785,6 +786,17 @@ static void headless_wait() {
      }
  }
  
@@ -285,7 +289,7 @@ index 2f82e0f..1d41ada 100644
  int ui_menu_level = 1;
  int ui_root_menu = 0;
  static void
-@@ -830,12 +842,14 @@ prompt_and_wait() {
+@@ -828,12 +840,14 @@ prompt_and_wait() {
                          ui_print("\n-- Wiping cache...\n");
                          erase_volume("/cache");
                          ui_print("Cache wipe complete.\n");
@@ -300,7 +304,7 @@ index 2f82e0f..1d41ada 100644
                      break;
  
                  case ITEM_NANDROID:
-@@ -849,6 +863,14 @@ prompt_and_wait() {
+@@ -847,6 +861,14 @@ prompt_and_wait() {
                  case ITEM_ADVANCED:
                      ret = show_advanced_menu();
                      break;

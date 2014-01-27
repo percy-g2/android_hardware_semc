@@ -1,10 +1,10 @@
 #       modified:   jni/com_android_bluetooth_btservice_AdapterService.cpp
 #       modified:   src/com/android/bluetooth/btservice/AdapterService.java
 diff --git a/packages/apps/Bluetooth/jni/com_android_bluetooth_btservice_AdapterService.cpp b/packages/apps/Bluetooth/jni/com_android_bluetooth_btservice_AdapterService.cpp
-index 48e3eb3..4a9be7c 100644
+index 2ef387d..ae95125 100644
 --- a/packages/apps/Bluetooth/jni/com_android_bluetooth_btservice_AdapterService.cpp
 +++ b/packages/apps/Bluetooth/jni/com_android_bluetooth_btservice_AdapterService.cpp
-@@ -1083,12 +1083,6 @@ static jboolean configHciSnoopLogNative(JNIEnv* env, jobject obj, jboolean enabl
+@@ -1104,12 +1104,6 @@ static jboolean configHciSnoopLogNative(JNIEnv* env, jobject obj, jboolean enabl
  
      jboolean result = JNI_FALSE;
  
@@ -18,10 +18,10 @@ index 48e3eb3..4a9be7c 100644
  }
  
 diff --git a/packages/apps/Bluetooth/src/com/android/bluetooth/btservice/AdapterService.java b/packages/apps/Bluetooth/src/com/android/bluetooth/btservice/AdapterService.java
-index 395f024..d507523 100644
+index 88066c5..99cecf7 100644
 --- a/packages/apps/Bluetooth/src/com/android/bluetooth/btservice/AdapterService.java
 +++ b/packages/apps/Bluetooth/src/com/android/bluetooth/btservice/AdapterService.java
-@@ -942,15 +942,7 @@ public class AdapterService extends Service {
+@@ -967,15 +967,7 @@ public class AdapterService extends Service {
          }
  
          public boolean configHciSnoopLog(boolean enable) {
@@ -37,7 +37,7 @@ index 395f024..d507523 100644
          }
  
          public void registerCallback(IBluetoothCallback cb) {
-@@ -1470,8 +1462,7 @@ public class AdapterService extends Service {
+@@ -1506,8 +1498,7 @@ public class AdapterService extends Service {
       }
  
      boolean configHciSnoopLog(boolean enable) {

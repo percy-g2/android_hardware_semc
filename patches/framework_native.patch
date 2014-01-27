@@ -559,7 +559,7 @@ index 807c149..4535718 100644
    LOCAL_CFLAGS += -DNUM_FRAMEBUFFER_SURFACE_BUFFERS=$(NUM_FRAMEBUFFER_SURFACE_BUFFERS)
  endif
 diff --git a/frameworks/native/services/surfaceflinger/DisplayDevice.cpp b/frameworks/native/services/surfaceflinger/DisplayDevice.cpp
-index 5fa513c..69af894 100644
+index f56a1c5..8af9f5a 100755
 --- a/frameworks/native/services/surfaceflinger/DisplayDevice.cpp
 +++ b/frameworks/native/services/surfaceflinger/DisplayDevice.cpp
 @@ -29,6 +29,10 @@
@@ -573,7 +573,7 @@ index 5fa513c..69af894 100644
  #include <hardware/gralloc.h>
  
  #include "DisplayHardware/DisplaySurface.h"
-@@ -74,7 +78,11 @@ DisplayDevice::DisplayDevice(
+@@ -75,7 +79,11 @@ DisplayDevice::DisplayDevice(
        mOrientation()
  {
      mNativeWindow = new Surface(producer, false);
@@ -586,10 +586,10 @@ index 5fa513c..69af894 100644
      int format;
      window->query(window, NATIVE_WINDOW_FORMAT, &format);
 diff --git a/frameworks/native/services/surfaceflinger/SurfaceFlinger.cpp b/frameworks/native/services/surfaceflinger/SurfaceFlinger.cpp
-index 2866abf..a2586cb 100644
+index 339e798..a934891 100644
 --- a/frameworks/native/services/surfaceflinger/SurfaceFlinger.cpp
 +++ b/frameworks/native/services/surfaceflinger/SurfaceFlinger.cpp
-@@ -2793,7 +2793,7 @@ status_t SurfaceFlinger::onTransact(
+@@ -2795,7 +2795,7 @@ status_t SurfaceFlinger::onTransact(
              const int pid = ipc->getCallingPid();
              const int uid = ipc->getCallingUid();
              if ((uid != AID_GRAPHICS) &&
@@ -598,7 +598,7 @@ index 2866abf..a2586cb 100644
                   (uid != AID_SYSTEM) &&
  #endif
                      !PermissionCache::checkPermission(sAccessSurfaceFlinger, pid, uid)) {
-@@ -2936,6 +2936,9 @@ class GraphicProducerWrapper : public BBinder, public MessageHandler {
+@@ -2938,6 +2938,9 @@ class GraphicProducerWrapper : public BBinder, public MessageHandler {
      uint32_t code;
      Parcel const* data;
      Parcel* reply;
@@ -608,7 +608,7 @@ index 2866abf..a2586cb 100644
  
      enum {
          MSG_API_CALL,
-@@ -2948,6 +2951,9 @@ class GraphicProducerWrapper : public BBinder, public MessageHandler {
+@@ -2950,6 +2953,9 @@ class GraphicProducerWrapper : public BBinder, public MessageHandler {
       */
      virtual status_t transact(uint32_t code,
              const Parcel& data, Parcel* reply, uint32_t flags) {
@@ -618,7 +618,7 @@ index 2866abf..a2586cb 100644
          this->code = code;
          this->data = &data;
          this->reply = reply;
-@@ -2960,6 +2966,9 @@ class GraphicProducerWrapper : public BBinder, public MessageHandler {
+@@ -2962,6 +2968,9 @@ class GraphicProducerWrapper : public BBinder, public MessageHandler {
              looper->sendMessage(this, Message(MSG_API_CALL));
              barrier.wait();
          }
