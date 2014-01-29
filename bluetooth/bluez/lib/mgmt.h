@@ -94,6 +94,7 @@ struct mgmt_rp_read_index_list {
 #define MGMT_SETTING_HS			0x00000100
 #define MGMT_SETTING_LE			0x00000200
 #define MGMT_SETTING_ADVERTISING	0x00000400
+#define MGMT_SETTING_SECURE_CONN	0x00000800
 
 #define MGMT_OP_READ_INFO		0x0004
 struct mgmt_rp_read_info {
@@ -270,6 +271,12 @@ struct mgmt_rp_read_local_oob_data {
 	uint8_t hash[16];
 	uint8_t randomizer[16];
 } __packed;
+struct mgmt_rp_read_local_oob_ext_data {
+	uint8_t hash192[16];
+	uint8_t randomizer192[16];
+	uint8_t hash256[16];
+	uint8_t randomizer256[16];
+} __packed;
 
 #define MGMT_OP_ADD_REMOTE_OOB_DATA	0x0021
 struct mgmt_cp_add_remote_oob_data {
@@ -334,6 +341,8 @@ struct mgmt_cp_set_scan_params {
 	uint16_t interval;
 	uint16_t window;
 } __packed;
+
+#define MGMT_OP_SET_SECURE_CONN		0x002D
 
 #define MGMT_EV_CMD_COMPLETE		0x0001
 struct mgmt_ev_cmd_complete {
@@ -517,6 +526,7 @@ static const char *mgmt_op[] = {
 	"Set BR/EDR",
 	"Set Static Address",
 	"Set Scan Parameters",
+	"Set Secure Connections",
 };
 
 static const char *mgmt_ev[] = {

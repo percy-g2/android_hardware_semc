@@ -47,7 +47,7 @@ index 032c1b3..79502d4 100644
  
  void device_ui_init(UIParameters* ui_parameters) {
 diff --git a/bootable/recovery/extendedcommands.c b/bootable/recovery/extendedcommands.c
-index dbc0971..00e7c2a 100644
+index b31de1c..45528c7 100644
 --- a/bootable/recovery/extendedcommands.c
 +++ b/bootable/recovery/extendedcommands.c
 @@ -32,6 +32,7 @@
@@ -183,7 +183,7 @@ index dbc0971..00e7c2a 100644
  }
  
  int confirm_selection(const char* title, const char* confirm) {
-@@ -1355,11 +1426,44 @@ int can_partition(const char* volume) {
+@@ -1401,11 +1472,44 @@ int can_partition(const char* volume) {
  
  
  #ifdef ENABLE_LOKI
@@ -230,7 +230,7 @@ index dbc0971..00e7c2a 100644
  int show_advanced_menu() {
      char buf[80];
      int i = 0, j = 0, chosen_item = 0;
-@@ -1391,6 +1495,9 @@ int show_advanced_menu() {
+@@ -1437,6 +1541,9 @@ int show_advanced_menu() {
      list[6] = "show log";
  #ifdef ENABLE_LOKI
      list[7] = "toggle loki support";
@@ -240,7 +240,7 @@ index dbc0971..00e7c2a 100644
  #endif
  
      char list_prefix[] = "partition ";
-@@ -1473,6 +1580,18 @@ int show_advanced_menu() {
+@@ -1519,6 +1626,18 @@ int show_advanced_menu() {
              case 7:
                  toggle_loki_support();
                  break;

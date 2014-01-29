@@ -10,7 +10,7 @@ LOCAL_SRC_FILES:= \
 	btio.c
 
 LOCAL_CFLAGS:= \
-	-DVERSION=\"5.13\" \
+	-DVERSION=\"5.14\" \
 
 LOCAL_C_INCLUDES:= \
 	$(LOCAL_PATH)/../lib \

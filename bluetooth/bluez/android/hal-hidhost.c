@@ -218,16 +218,8 @@ static bt_status_t get_protocol(bt_bdaddr_t *bd_addr,
 
 	memcpy(cmd.bdaddr, bd_addr, sizeof(cmd.bdaddr));
 
-	switch (protocol_mode) {
-	case BTHH_REPORT_MODE:
-		cmd.mode = HAL_HIDHOST_REPORT_PROTOCOL;
-		break;
-	case BTHH_BOOT_MODE:
-		cmd.mode = HAL_HIDHOST_BOOT_PROTOCOL;
-		break;
-	default:
-		return BT_STATUS_PARM_INVALID;
-	}
+	/* type match IPC type */
+	cmd.mode = protocol_mode;
 
 	return hal_ipc_cmd(HAL_SERVICE_ID_HIDHOST,
 				HAL_OP_HIDHOST_GET_PROTOCOL,
@@ -249,16 +241,8 @@ static bt_status_t set_protocol(bt_bdaddr_t *bd_addr,
 
 	memcpy(cmd.bdaddr, bd_addr, sizeof(cmd.bdaddr));
 
-	switch (protocol_mode) {
-	case BTHH_REPORT_MODE:
-		cmd.mode = HAL_HIDHOST_REPORT_PROTOCOL;
-		break;
-	case BTHH_BOOT_MODE:
-		cmd.mode = HAL_HIDHOST_BOOT_PROTOCOL;
-		break;
-	default:
-		return BT_STATUS_PARM_INVALID;
-	}
+	/* type match IPC type */
+	cmd.mode = protocol_mode;
 
 	return hal_ipc_cmd(HAL_SERVICE_ID_HIDHOST,
 				HAL_OP_HIDHOST_SET_PROTOCOL,
@@ -284,19 +268,8 @@ static bt_status_t get_report(bt_bdaddr_t *bd_addr,
 	cmd.id = report_id;
 	cmd.buf_size = buffer_size;
 
-	switch (report_type) {
-	case BTHH_INPUT_REPORT:
-		cmd.type = HAL_HIDHOST_INPUT_REPORT;
-		break;
-	case BTHH_OUTPUT_REPORT:
-		cmd.type = HAL_HIDHOST_OUTPUT_REPORT;
-		break;
-	case BTHH_FEATURE_REPORT:
-		cmd.type = HAL_HIDHOST_FEATURE_REPORT;
-		break;
-	default:
-		return BT_STATUS_PARM_INVALID;
-	}
+	/* type match IPC type */
+	cmd.type = report_type;
 
 	return hal_ipc_cmd(HAL_SERVICE_ID_HIDHOST, HAL_OP_HIDHOST_GET_REPORT,
 			sizeof(cmd), &cmd, 0, NULL, NULL);
@@ -321,19 +294,8 @@ static bt_status_t set_report(bt_bdaddr_t *bd_addr,
 	cmd->len = strlen(report);
 	memcpy(cmd->data, report, cmd->len);
 
-	switch (report_type) {
-	case BTHH_INPUT_REPORT:
-		cmd->type = HAL_HIDHOST_INPUT_REPORT;
-		break;
-	case BTHH_OUTPUT_REPORT:
-		cmd->type = HAL_HIDHOST_OUTPUT_REPORT;
-		break;
-	case BTHH_FEATURE_REPORT:
-		cmd->type = HAL_HIDHOST_FEATURE_REPORT;
-		break;
-	default:
-		return BT_STATUS_PARM_INVALID;
-	}
+	/* type match IPC type */
+	cmd->type = report_type;
 
 	return hal_ipc_cmd(HAL_SERVICE_ID_HIDHOST, HAL_OP_HIDHOST_SET_REPORT,
 				sizeof(*cmd) + cmd->len, buf, 0, NULL, NULL);

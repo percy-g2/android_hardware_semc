@@ -99,19 +99,255 @@ struct bt_ll_reject_ind {
 	uint8_t  error;
 } __attribute__ ((packed));
 
+#define LMP_ESC4(x) ((127 << 8) | (x))
+
+#define BT_LMP_ACCEPTED			3
+struct bt_lmp_accepted {
+	uint8_t  opcode;
+} __attribute__ ((packed));
+
+#define BT_LMP_NOT_ACCEPTED		4
+struct bt_lmp_not_accepted {
+	uint8_t  opcode;
+	uint8_t  error;
+} __attribute__ ((packed));
+
+#define BT_LMP_CLKOFFSET_REQ		5
+
+#define BT_LMP_DETACH			7
+struct bt_lmp_detach {
+	uint8_t  error;
+} __attribute__ ((packed));
+
+#define BT_LMP_AU_RAND			11
+struct bt_lmp_au_rand {
+	uint8_t  number[16];
+} __attribute__ ((packed));
+
+#define BT_LMP_SRES			12
+struct bt_lmp_sres {
+	uint8_t  response[4];
+} __attribute__ ((packed));
+
+#define BT_LMP_ENCRYPTION_MODE_REQ	15
+struct bt_lmp_encryption_mode_req {
+	uint8_t  mode;
+} __attribute__ ((packed));
+
+#define BT_LMP_ENCRYPTION_KEY_SIZE_REQ	16
+struct bt_lmp_encryption_key_size_req {
+	uint8_t  key_size;
+} __attribute__ ((packed));
+
+#define BT_LMP_START_ENCRYPTION_REQ	17
+struct bt_lmp_start_encryption_req {
+	uint8_t  number[16];
+} __attribute__ ((packed));
+
+#define BT_LMP_STOP_ENCRYPTION_REQ	18
+
+#define BT_LMP_UNSNIFF_REQ		24
+
+#define BT_LMP_MAX_POWER		33
+
+#define BT_LMP_MIN_POWER		34
+
+#define BT_LMP_AUTO_RATE		35
+
+#define BT_LMP_VERSION_REQ		37
+struct bt_lmp_version_req {
+	uint8_t  version;
+	uint16_t company;
+	uint16_t subversion;
+} __attribute__ ((packed));
+
+#define BT_LMP_VERSION_RES		38
+struct bt_lmp_version_res {
+	uint8_t  version;
+	uint16_t company;
+	uint16_t subversion;
+} __attribute__ ((packed));
+
+#define BT_LMP_FEATURES_REQ		39
+struct bt_lmp_features_req {
+	uint8_t  features[8];
+} __attribute__ ((packed));
+
+#define BT_LMP_FEATURES_RES		40
+struct bt_lmp_features_res {
+	uint8_t  features[8];
+} __attribute__ ((packed));
+
+#define BT_LMP_MAX_SLOT			45
+struct bt_lmp_max_slot {
+	uint8_t  slots;
+} __attribute__ ((packed));
+
+#define BT_LMP_MAX_SLOT_REQ		46
+struct bt_lmp_max_slot_req {
+	uint8_t  slots;
+} __attribute__ ((packed));
+
+#define BT_LMP_TIMING_ACCURACY_REQ	47
+
+#define BT_LMP_TIMING_ACCURACY_RES	48
+struct bt_lmp_timing_accuracy_res {
+	uint8_t  drift;
+	uint8_t  jitter;
+} __attribute__ ((packed));
+
+#define BT_LMP_SETUP_COMPLETE		49
+
+#define BT_LMP_USE_SEMI_PERMANENT_KEY	50
+
+#define BT_LMP_HOST_CONNECTION_REQ	51
+
+#define BT_LMP_PAGE_SCAN_MODE_REQ	54
+struct bt_lmp_page_scan_mode_req {
+	uint8_t  scheme;
+	uint8_t  settings;
+} __attribute__ ((packed));
+
+#define BT_LMP_TEST_ACTIVATE		56
+
+#define BT_LMP_ENCRYPTION_KEY_SIZE_MASK_REQ	58
+
+#define BT_LMP_SET_AFH			60
+struct bt_lmp_set_afh {
+	uint32_t instant;
+	uint8_t  mode;
+	uint8_t  map[10];
+} __attribute__ ((packed));
+
+#define BT_LMP_ENCAPSULATED_HEADER	61
+struct bt_lmp_encapsulated_header {
+	uint8_t  major;
+	uint8_t  minor;
+	uint8_t  length;
+} __attribute__ ((packed));
+
+#define BT_LMP_ENCAPSULATED_PAYLOAD	62
+struct bt_lmp_encapsulated_payload {
+	uint8_t  data[16];
+} __attribute__ ((packed));
+
+#define BT_LMP_SIMPLE_PAIRING_CONFIRM	63
+struct bt_lmp_simple_pairing_confirm {
+	uint8_t  value[16];
+} __attribute__ ((packed));
+
+#define BT_LMP_SIMPLE_PAIRING_NUMBER	64
+struct bt_lmp_simple_pairing_number {
+	uint8_t  value[16];
+} __attribute__ ((packed));
+
+#define BT_LMP_DHKEY_CHECK		65
+struct bt_lmp_dhkey_check {
+	uint8_t  value[16];
+} __attribute__ ((packed));
+
+#define BT_LMP_PAUSE_ENCRYPTION_AES_REQ	66
+
+#define BT_LMP_ACCEPTED_EXT		LMP_ESC4(1)
+struct bt_lmp_accepted_ext {
+	uint8_t  escape;
+	uint8_t  opcode;
+} __attribute__ ((packed));
+
+#define BT_LMP_NOT_ACCEPTED_EXT		LMP_ESC4(2)
+struct bt_lmp_not_accepted_ext {
+	uint8_t  escape;
+	uint8_t  opcode;
+	uint8_t  error;
+} __attribute__ ((packed));
+
+#define BT_LMP_FEATURES_REQ_EXT		LMP_ESC4(3)
+struct bt_lmp_features_req_ext {
+	uint8_t  page;
+	uint8_t  max_page;
+	uint8_t  features[8];
+} __attribute__ ((packed));
+
+#define BT_LMP_FEATURES_RES_EXT		LMP_ESC4(4)
+struct bt_lmp_features_res_ext {
+	uint8_t  page;
+	uint8_t  max_page;
+	uint8_t  features[8];
+} __attribute__ ((packed));
+
+#define BT_LMP_PACKET_TYPE_TABLE_REQ	LMP_ESC4(11)
+struct bt_lmp_packet_type_table_req {
+	uint8_t  table;
+} __attribute__ ((packed));
+
+#define BT_LMP_CHANNEL_CLASSIFICATION_REQ	LMP_ESC4(16)
+struct bt_lmp_channel_classification_req {
+	uint8_t  mode;
+	uint16_t min_interval;
+	uint16_t max_interval;
+} __attribute__ ((packed));
+
+#define BT_LMP_CHANNEL_CLASSIFICATION	LMP_ESC4(17)
+struct bt_lmp_channel_classification {
+	uint8_t  classification[10];
+} __attribute__ ((packed));
+
+#define BT_LMP_PAUSE_ENCRYPTION_REQ	LMP_ESC4(23)
+
+#define BT_LMP_RESUME_ENCRYPTION_REQ	LMP_ESC4(24)
+
+#define BT_LMP_IO_CAPABILITY_REQ	LMP_ESC4(25)
+struct bt_lmp_io_capability_req {
+	uint8_t  capability;
+	uint8_t  oob_data;
+	uint8_t  authentication;
+} __attribute__ ((packed));
+
+#define BT_LMP_IO_CAPABILITY_RES	LMP_ESC4(26)
+struct bt_lmp_io_capability_res {
+	uint8_t  capability;
+	uint8_t  oob_data;
+	uint8_t  authentication;
+} __attribute__ ((packed));
+
+#define BT_LMP_NUMERIC_COMPARISON_FAILED	LMP_ESC(27)
+
+#define BT_LMP_PASSKEY_FAILED		LMP_ESC4(28)
+
+#define BT_LMP_OOB_FAILED		LMP_ESC(29)
+
+#define BT_LMP_POWER_CONTROL_REQ	LMP_ESC4(31)
+struct bt_lmp_power_control_req {
+	uint8_t  request;
+} __attribute__ ((packed));
+
+#define BT_LMP_POWER_CONTROL_RES	LMP_ESC4(32)
+struct bt_lmp_power_control_res {
+	uint8_t  response;
+} __attribute__ ((packed));
+
+#define BT_LMP_PING_REQ			LMP_ESC4(33)
+
+#define BT_LMP_PING_RES			LMP_ESC4(34)
+
 #define BT_H4_CMD_PKT	0x01
 #define BT_H4_ACL_PKT	0x02
 #define BT_H4_SCO_PKT	0x03
 #define BT_H4_EVT_PKT	0x04
+
+struct bt_hci_cmd_hdr {
+	uint16_t opcode;
+	uint8_t  plen;
+} __attribute__ ((packed));
 
 struct bt_hci_acl_hdr {
 	uint16_t handle;
 	uint16_t dlen;
 } __attribute__ ((packed));
 
-struct bt_hci_cmd_hdr {
-	uint16_t opcode;
-	uint8_t  plen;
+struct bt_hci_sco_hdr {
+	uint16_t handle;
+	uint8_t  dlen;
 } __attribute__ ((packed));
 
 struct bt_hci_evt_hdr {
@@ -185,9 +421,17 @@ struct bt_hci_cmd_link_key_request_reply {
 	uint8_t  bdaddr[6];
 	uint8_t  link_key[16];
 } __attribute__ ((packed));
+struct bt_hci_rsp_link_key_request_reply {
+	uint8_t  status;
+	uint8_t  bdaddr[6];
+} __attribute__ ((packed));
 
 #define BT_HCI_CMD_LINK_KEY_REQUEST_NEG_REPLY	0x040c
 struct bt_hci_cmd_link_key_request_neg_reply {
+	uint8_t  bdaddr[6];
+} __attribute__ ((packed));
+struct bt_hci_rsp_link_key_request_neg_reply {
+	uint8_t  status;
 	uint8_t  bdaddr[6];
 } __attribute__ ((packed));
 
@@ -200,6 +444,10 @@ struct bt_hci_cmd_pin_code_request_reply {
 
 #define BT_HCI_CMD_PIN_CODE_REQUEST_NEG_REPLY	0x040e
 struct bt_hci_cmd_pin_code_request_neg_reply {
+	uint8_t  bdaddr[6];
+} __attribute__ ((packed));
+struct bt_hci_rsp_pin_code_request_neg_reply {
+	uint8_t  status;
 	uint8_t  bdaddr[6];
 } __attribute__ ((packed));
 
@@ -314,14 +562,26 @@ struct bt_hci_cmd_io_capability_request_reply {
 	uint8_t  oob_data;
 	uint8_t  authentication;
 } __attribute__ ((packed));
+struct bt_hci_rsp_io_capability_request_reply {
+	uint8_t  status;
+	uint8_t  bdaddr[6];
+} __attribute__ ((packed));
 
 #define BT_HCI_CMD_USER_CONFIRM_REQUEST_REPLY		0x042c
 struct bt_hci_cmd_user_confirm_request_reply {
 	uint8_t  bdaddr[6];
 } __attribute__ ((packed));
+struct bt_hci_rsp_user_confirm_request_reply {
+	uint8_t  status;
+	uint8_t  bdaddr[6];
+} __attribute__ ((packed));
 
 #define BT_HCI_CMD_USER_CONFIRM_REQUEST_NEG_REPLY	0x042d
 struct bt_hci_cmd_user_confirm_request_neg_reply {
+	uint8_t  bdaddr[6];
+} __attribute__ ((packed));
+struct bt_hci_rsp_user_confirm_request_neg_reply {
+	uint8_t  status;
 	uint8_t  bdaddr[6];
 } __attribute__ ((packed));
 
@@ -352,6 +612,10 @@ struct bt_hci_cmd_remote_oob_data_request_neg_reply {
 struct bt_hci_cmd_io_capability_request_neg_reply {
 	uint8_t  bdaddr[6];
 	uint8_t  reason;
+} __attribute__ ((packed));
+struct bt_hci_rsp_io_capability_request_neg_reply {
+	uint8_t  status;
+	uint8_t  bdaddr[6];
 } __attribute__ ((packed));
 
 #define BT_HCI_CMD_CREATE_PHY_LINK		0x0435
@@ -1220,6 +1484,8 @@ struct bt_hci_rsp_read_data_block_size {
 	uint16_t num_blocks;
 } __attribute__ ((packed));
 
+#define BT_HCI_CMD_READ_LOCAL_CODECS		0x100b
+
 #define BT_HCI_CMD_READ_FAILED_CONTACT_COUNTER	0x1401
 struct bt_hci_cmd_read_failed_contact_counter {
 	uint16_t handle;
@@ -1330,6 +1596,15 @@ struct bt_hci_cmd_write_remote_amp_assoc {
 struct bt_hci_rsp_write_remote_amp_assoc {
 	uint8_t  status;
 	uint8_t  phy_handle;
+} __attribute__ ((packed));
+
+#define BT_HCI_CMD_SET_TRIGGERED_CLOCK_CAPTURE	0x140d
+struct bt_hci_cmd_set_triggered_clock_capture {
+	uint16_t handle;
+	uint8_t  enable;
+	uint8_t  type;
+	uint8_t  lpo_allowed;
+	uint8_t  num_filter;
 } __attribute__ ((packed));
 
 #define BT_HCI_CMD_ENABLE_DUT_MODE		0x1803
@@ -2087,6 +2362,8 @@ struct bt_hci_evt_le_long_term_key_request {
 #define BT_HCI_ERR_UNKNOWN_CONN_ID		0x02
 #define BT_HCI_ERR_HARDWARE_FAILURE		0x03
 #define BT_HCI_ERR_PAGE_TIMEOUT			0x04
+#define BT_HCI_ERR_AUTH_FAILURE			0x05
+#define BT_HCI_ERR_PIN_OR_KEY_MISSING		0x06
 #define BT_HCI_ERR_MEM_CAPACITY_EXCEEDED	0x07
 #define BT_HCI_ERR_COMMAND_DISALLOWED		0x0c
 #define BT_HCI_ERR_UNSUPPORTED_FEATURE		0x11

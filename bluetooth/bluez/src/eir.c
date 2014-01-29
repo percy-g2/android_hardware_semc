@@ -30,6 +30,7 @@
 #include <ctype.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <glib.h>
 
 #include <bluetooth/bluetooth.h>
@@ -222,6 +223,16 @@ void eir_parse(struct eir_data *eir, const uint8_t *eir_data, uint8_t eir_len)
 				break;
 			eir->randomizer = g_memdup(data, 16);
 			break;
+
+		case EIR_DEVICE_ID:
+			if (data_len < 8)
+				break;
+
+			eir->did_source = data[0] | (data[1] << 8);
+			eir->did_vendor = data[2] | (data[3] << 8);
+			eir->did_product = data[4] | (data[5] << 8);
+			eir->did_version = data[6] | (data[7] << 8);
+			break;
 		}
 
 		eir_data += field_len + 1;
@@ -259,7 +270,7 @@ static void eir_generate_uuid128(sdp_list_t *list, uint8_t *ptr,
 	int i, k, uuid_count = 0;
 	uint16_t len = *eir_len;
 	uint8_t *uuid128;
-	gboolean truncated = FALSE;
+	bool truncated = false;
 
 	/* Store UUIDs in place, skip 2 bytes to write type and length later */
 	uuid128 = ptr + 2;
@@ -274,7 +285,7 @@ static void eir_generate_uuid128(sdp_list_t *list, uint8_t *ptr,
 
 		/* Stop if not enough space to put next UUID128 */
 		if ((len + 2 + SIZEOF_UUID128) > HCI_MAX_EIR_LENGTH) {
-			truncated = TRUE;
+			truncated = true;
 			break;
 		}
 
@@ -323,7 +334,7 @@ int eir_create_oob(const bdaddr_t *addr, const char *name, uint32_t cod,
 	uint16_t eir_total_len;
 	uint16_t uuid16[HCI_MAX_EIR_LENGTH / 2];
 	int i, uuid_count = 0;
-	gboolean truncated = FALSE;
+	bool truncated = false;
 	size_t name_len;
 
 	eir_total_len =  sizeof(uint16_t) + sizeof(bdaddr_t);
@@ -418,7 +429,7 @@ int eir_create_oob(const bdaddr_t *addr, const char *name, uint32_t cod,
 		/* Stop if not enough space to put next UUID16 */
 		if ((eir_optional_len + 2 + sizeof(uint16_t)) >
 				HCI_MAX_EIR_LENGTH) {
-			truncated = TRUE;
+			truncated = true;
 			break;
 		}
 

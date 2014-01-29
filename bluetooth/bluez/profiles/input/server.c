@@ -68,15 +68,10 @@ struct sixaxis_data {
 	uint16_t psm;
 };
 
-static void connect_event_cb(GIOChannel *chan, GError *err, gpointer data);
-
 static void sixaxis_sdp_cb(struct btd_device *dev, int err, void *user_data)
 {
 	struct sixaxis_data *data = user_data;
-	struct input_server *server;
-	GError *gerr = NULL;
 	const bdaddr_t *src;
-	GSList *l;
 
 	DBG("err %d (%s)", err, strerror(-err));
 
@@ -85,28 +80,9 @@ static void sixaxis_sdp_cb(struct btd_device *dev, int err, void *user_data)
 
 	src = btd_adapter_get_address(device_get_adapter(dev));
 
-	l = g_slist_find_custom(servers, src, server_cmp);
-	if (!l)
+	if (input_device_set_channel(src, device_get_address(dev), data->psm,
+								data->chan) < 0)
 		goto fail;
-
-	server = l->data;
-
-	err = input_device_set_channel(src, device_get_address(dev),
-							data->psm, data->chan);
-	if (err < 0)
-		goto fail;
-
-	if (server->confirm) {
-		if (!bt_io_accept(server->confirm, connect_event_cb, server,
-								NULL, &gerr)) {
-			error("bt_io_accept: %s", gerr->message);
-			g_error_free(gerr);
-			goto fail;
-		}
-
-		g_io_channel_unref(server->confirm);
-		server->confirm = NULL;
-	}
 
 	g_io_channel_unref(data->chan);
 	g_free(data);
@@ -125,9 +101,6 @@ static void sixaxis_browse_sdp(const bdaddr_t *src, const bdaddr_t *dst,
 	struct btd_device *device;
 	struct sixaxis_data *data;
 
-	if (psm != L2CAP_PSM_HIDP_CTRL)
-		return;
-
 	device = btd_adapter_find_device(adapter_find(src), dst);
 	if (!device)
 		return;
@@ -136,25 +109,33 @@ static void sixaxis_browse_sdp(const bdaddr_t *src, const bdaddr_t *dst,
 	data->chan = g_io_channel_ref(chan);
 	data->psm = psm;
 
-	device_discover_services(device);
+	if (psm == L2CAP_PSM_HIDP_CTRL)
+		device_discover_services(device);
+
 	device_wait_for_svc_complete(device, sixaxis_sdp_cb, data);
 }
 
 static bool dev_is_sixaxis(const bdaddr_t *src, const bdaddr_t *dst)
 {
 	struct btd_device *device;
+	uint16_t vid, pid;
 
 	device = btd_adapter_find_device(adapter_find(src), dst);
 	if (!device)
 		return false;
 
-	if (btd_device_get_vendor(device) != 0x054c)
-		return false;
+	vid = btd_device_get_vendor(device);
+	pid = btd_device_get_product(device);
 
-	if (btd_device_get_product(device) != 0x0268)
-		return false;
+	/* DualShock 3 */
+	if (vid == 0x054c && pid == 0x0268)
+		return true;
 
-	return true;
+	/* DualShock 4 */
+	if (vid == 0x054c && pid == 0x05c4)
+		return true;
+
+	return false;
 }
 
 static void connect_event_cb(GIOChannel *chan, GError *err, gpointer data)
@@ -228,7 +209,7 @@ static void auth_callback(DBusError *derr, void *user_data)
 		goto reject;
 	}
 
-	if (!input_device_exists(&src, &dst) && dev_is_sixaxis(&src, &dst))
+	if (!input_device_exists(&src, &dst) && !dev_is_sixaxis(&src, &dst))
 		return;
 
 	if (!bt_io_accept(server->confirm, connect_event_cb, server,

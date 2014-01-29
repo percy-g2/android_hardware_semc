@@ -28,6 +28,7 @@
 #include <sys/un.h>
 #include <poll.h>
 
+#include <hardware/audio.h>
 #include <hardware/bluetooth.h>
 #include <hardware/bt_av.h>
 #include <hardware/bt_hh.h>
@@ -36,13 +37,13 @@
 #include <hardware/bt_hf.h>
 #include <hardware/bt_hl.h>
 
-#if PLATFORM_SDK_VERSION > 17
 #include <hardware/bt_rc.h>
 #include <hardware/bt_gatt.h>
 #include <hardware/bt_gatt_types.h>
 #include <hardware/bt_gatt_client.h>
 #include <hardware/bt_gatt_server.h>
-#endif
+
+extern audio_hw_device_t *if_audio;
 
 /* Interfaces from hal that can be populated during application lifetime */
 extern const bt_interface_t *if_bluetooth;
@@ -51,11 +52,9 @@ extern const bthf_interface_t *if_hf;
 extern const bthh_interface_t *if_hh;
 extern const btpan_interface_t *if_pan;
 extern const btsock_interface_t *if_sock;
-#if PLATFORM_SDK_VERSION > 17
 extern const btgatt_interface_t *if_gatt;
 extern const btgatt_server_interface_t *if_gatt_server;
 extern const btgatt_client_interface_t *if_gatt_client;
-#endif
 
 /*
  * Structure defines top level interfaces that can be used in test tool
@@ -66,13 +65,12 @@ struct interface {
 	struct method *methods; /* methods available for this interface */
 };
 
+extern const struct interface audio_if;
 extern const struct interface bluetooth_if;
 extern const struct interface av_if;
-#if PLATFORM_SDK_VERSION > 17
 extern const struct interface gatt_if;
 extern const struct interface gatt_client_if;
 extern const struct interface gatt_server_if;
-#endif
 extern const struct interface pan_if;
 extern const struct interface sock_if;
 extern const struct interface hf_if;
@@ -147,8 +145,12 @@ const struct method *get_interface_method(const char *iname,
 /* Helper macro for executing function on interface and printing BT_STATUS */
 #define EXEC(f, ...) \
 	{ \
-		int err = f(__VA_ARGS__); \
-		haltest_info("%s: %s\n", #f, bt_status_t2str(err)); \
+		if (f) { \
+			int err = f(__VA_ARGS__); \
+			haltest_info("%s: %s\n", #f, bt_status_t2str(err)); \
+		} else { \
+			haltest_info("%s is NULL\n", #f); \
+		} \
 	}
 
 /* Helper macro for executing void function on interface */

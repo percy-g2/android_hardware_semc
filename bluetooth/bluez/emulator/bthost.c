@@ -35,7 +35,9 @@
 
 #include "bluetooth/bluetooth.h"
 
+#include "src/shared/util.h"
 #include "monitor/bt.h"
+#include "monitor/rfcomm.h"
 #include "bthost.h"
 
 /* ACL handle and flags pack/unpack */
@@ -43,10 +45,67 @@
 #define acl_handle(h)		(h & 0x0fff)
 #define acl_flags(h)		(h >> 12)
 
-#define le16_to_cpu(val) (val)
-#define le32_to_cpu(val) (val)
-#define cpu_to_le16(val) (val)
-#define cpu_to_le32(val) (val)
+/* RFCOMM setters */
+#define RFCOMM_ADDR(cr, dlci)	(((dlci & 0x3f) << 2) | (cr << 1) | 0x01)
+#define RFCOMM_CTRL(type, pf)	(((type & 0xef) | (pf << 4)))
+#define RFCOMM_LEN8(len)	(((len) << 1) | 1)
+#define RFCOMM_LEN16(len)	((len) << 1)
+#define RFCOMM_MCC_TYPE(cr, type)	(((type << 2) | (cr << 1) | 0x01))
+
+/* RFCOMM FCS calculation */
+#define CRC(data) (rfcomm_crc_table[rfcomm_crc_table[0xff ^ data[0]] ^ data[1]])
+
+static unsigned char rfcomm_crc_table[256] = {
+	0x00, 0x91, 0xe3, 0x72, 0x07, 0x96, 0xe4, 0x75,
+	0x0e, 0x9f, 0xed, 0x7c, 0x09, 0x98, 0xea, 0x7b,
+	0x1c, 0x8d, 0xff, 0x6e, 0x1b, 0x8a, 0xf8, 0x69,
+	0x12, 0x83, 0xf1, 0x60, 0x15, 0x84, 0xf6, 0x67,
+
+	0x38, 0xa9, 0xdb, 0x4a, 0x3f, 0xae, 0xdc, 0x4d,
+	0x36, 0xa7, 0xd5, 0x44, 0x31, 0xa0, 0xd2, 0x43,
+	0x24, 0xb5, 0xc7, 0x56, 0x23, 0xb2, 0xc0, 0x51,
+	0x2a, 0xbb, 0xc9, 0x58, 0x2d, 0xbc, 0xce, 0x5f,
+
+	0x70, 0xe1, 0x93, 0x02, 0x77, 0xe6, 0x94, 0x05,
+	0x7e, 0xef, 0x9d, 0x0c, 0x79, 0xe8, 0x9a, 0x0b,
+	0x6c, 0xfd, 0x8f, 0x1e, 0x6b, 0xfa, 0x88, 0x19,
+	0x62, 0xf3, 0x81, 0x10, 0x65, 0xf4, 0x86, 0x17,
+
+	0x48, 0xd9, 0xab, 0x3a, 0x4f, 0xde, 0xac, 0x3d,
+	0x46, 0xd7, 0xa5, 0x34, 0x41, 0xd0, 0xa2, 0x33,
+	0x54, 0xc5, 0xb7, 0x26, 0x53, 0xc2, 0xb0, 0x21,
+	0x5a, 0xcb, 0xb9, 0x28, 0x5d, 0xcc, 0xbe, 0x2f,
+
+	0xe0, 0x71, 0x03, 0x92, 0xe7, 0x76, 0x04, 0x95,
+	0xee, 0x7f, 0x0d, 0x9c, 0xe9, 0x78, 0x0a, 0x9b,
+	0xfc, 0x6d, 0x1f, 0x8e, 0xfb, 0x6a, 0x18, 0x89,
+	0xf2, 0x63, 0x11, 0x80, 0xf5, 0x64, 0x16, 0x87,
+
+	0xd8, 0x49, 0x3b, 0xaa, 0xdf, 0x4e, 0x3c, 0xad,
+	0xd6, 0x47, 0x35, 0xa4, 0xd1, 0x40, 0x32, 0xa3,
+	0xc4, 0x55, 0x27, 0xb6, 0xc3, 0x52, 0x20, 0xb1,
+	0xca, 0x5b, 0x29, 0xb8, 0xcd, 0x5c, 0x2e, 0xbf,
+
+	0x90, 0x01, 0x73, 0xe2, 0x97, 0x06, 0x74, 0xe5,
+	0x9e, 0x0f, 0x7d, 0xec, 0x99, 0x08, 0x7a, 0xeb,
+	0x8c, 0x1d, 0x6f, 0xfe, 0x8b, 0x1a, 0x68, 0xf9,
+	0x82, 0x13, 0x61, 0xf0, 0x85, 0x14, 0x66, 0xf7,
+
+	0xa8, 0x39, 0x4b, 0xda, 0xaf, 0x3e, 0x4c, 0xdd,
+	0xa6, 0x37, 0x45, 0xd4, 0xa1, 0x30, 0x42, 0xd3,
+	0xb4, 0x25, 0x57, 0xc6, 0xb3, 0x22, 0x50, 0xc1,
+	0xba, 0x2b, 0x59, 0xc8, 0xbd, 0x2c, 0x5e, 0xcf
+};
+
+static uint8_t rfcomm_fcs2(uint8_t *data)
+{
+	return 0xff - rfcomm_crc_table[CRC(data) ^ data[2]];
+}
+
+static uint8_t rfcomm_fcs(uint8_t *data)
+{
+	return 0xff - CRC(data);
+}
 
 struct cmd {
 	struct cmd *next;
@@ -69,11 +128,14 @@ struct cid_hook {
 
 struct btconn {
 	uint16_t handle;
+	uint8_t bdaddr[6];
 	uint8_t addr_type;
+	uint8_t encr_mode;
 	uint16_t next_cid;
 	struct l2conn *l2conns;
 	struct cid_hook *cid_hooks;
 	struct btconn *next;
+	void *smp_data;
 };
 
 struct l2conn {
@@ -97,6 +159,20 @@ struct l2cap_conn_cb_data {
 	struct l2cap_conn_cb_data *next;
 };
 
+struct rfcomm_conn_cb_data {
+	uint8_t channel;
+	bthost_rfcomm_connect_cb func;
+	void *user_data;
+	struct rfcomm_conn_cb_data *next;
+};
+
+struct rfcomm_connection_data {
+	uint8_t channel;
+	struct btconn *conn;
+	bthost_rfcomm_connect_cb cb;
+	void *user_data;
+};
+
 struct bthost {
 	uint8_t bdaddr[6];
 	bthost_send_func send_handler;
@@ -108,8 +184,16 @@ struct bthost {
 	void *cmd_complete_data;
 	bthost_new_conn_cb new_conn_cb;
 	void *new_conn_data;
+	struct rfcomm_connection_data *rfcomm_conn_data;
 	struct l2cap_conn_cb_data *new_l2cap_conn_data;
+	struct rfcomm_conn_cb_data *new_rfcomm_conn_data;
 	struct l2cap_pending_req *l2reqs;
+	uint8_t pin[16];
+	uint8_t pin_len;
+	uint8_t io_capability;
+	bool reject_user_confirm;
+	void *smp_data;
+	bool conn_init;
 };
 
 struct bthost *bthost_create(void)
@@ -132,6 +216,9 @@ static void l2conn_free(struct l2conn *conn)
 
 static void btconn_free(struct btconn *conn)
 {
+	if (conn->smp_data)
+		smp_conn_del(conn->smp_data);
+
 	while (conn->l2conns) {
 		struct l2conn *l2conn = conn->l2conns;
 
@@ -155,6 +242,19 @@ static struct btconn *bthost_find_conn(struct bthost *bthost, uint16_t handle)
 
 	for (conn = bthost->conns; conn != NULL; conn = conn->next) {
 		if (conn->handle == handle)
+			return conn;
+	}
+
+	return NULL;
+}
+
+static struct btconn *bthost_find_conn_by_bdaddr(struct bthost *bthost,
+							const uint8_t *bdaddr)
+{
+	struct btconn *conn;
+
+	for (conn = bthost->conns; conn != NULL; conn = conn->next) {
+		if (!memcmp(conn->bdaddr, bdaddr, 6))
 			return conn;
 	}
 
@@ -210,6 +310,19 @@ static struct l2cap_conn_cb_data *bthost_find_l2cap_cb_by_psm(
 	return NULL;
 }
 
+static struct rfcomm_conn_cb_data *bthost_find_rfcomm_cb_by_channel(
+					struct bthost *bthost, uint8_t channel)
+{
+	struct rfcomm_conn_cb_data *cb;
+
+	for (cb = bthost->new_rfcomm_conn_data; cb != NULL; cb = cb->next) {
+		if (cb->channel == channel)
+			return cb;
+	}
+
+	return NULL;
+}
+
 void bthost_destroy(struct bthost *bthost)
 {
 	if (!bthost)
@@ -243,6 +356,16 @@ void bthost_destroy(struct bthost *bthost)
 		bthost->new_l2cap_conn_data = cb->next;
 		free(cb);
 	}
+
+	while (bthost->new_rfcomm_conn_data) {
+		struct rfcomm_conn_cb_data *cb = bthost->new_rfcomm_conn_data;
+
+		bthost->new_rfcomm_conn_data = cb->next;
+		free(cb);
+	}
+
+	if (bthost->rfcomm_conn_data)
+		free(bthost->rfcomm_conn_data);
 
 	free(bthost);
 }
@@ -537,6 +660,22 @@ static void evt_cmd_complete(struct bthost *bthost, const void *data,
 		break;
 	case BT_HCI_CMD_LE_SET_ADV_ENABLE:
 		break;
+	case BT_HCI_CMD_PIN_CODE_REQUEST_REPLY:
+		break;
+	case BT_HCI_CMD_PIN_CODE_REQUEST_NEG_REPLY:
+		break;
+	case BT_HCI_CMD_LINK_KEY_REQUEST_NEG_REPLY:
+		break;
+	case BT_HCI_CMD_WRITE_SIMPLE_PAIRING_MODE:
+		break;
+	case BT_HCI_CMD_IO_CAPABILITY_REQUEST_REPLY:
+		break;
+	case BT_HCI_CMD_USER_CONFIRM_REQUEST_REPLY:
+		break;
+	case BT_HCI_CMD_LE_LTK_REQ_REPLY:
+		break;
+	case BT_HCI_CMD_LE_LTK_REQ_NEG_REPLY:
+		break;
 	default:
 		printf("Unhandled cmd_complete opcode 0x%04x\n", opcode);
 		break;
@@ -585,9 +724,11 @@ static void evt_conn_request(struct bthost *bthost, const void *data,
 								sizeof(cmd));
 }
 
-static void init_conn(struct bthost *bthost, uint16_t handle, uint8_t addr_type)
+static void init_conn(struct bthost *bthost, uint16_t handle,
+				const uint8_t *bdaddr, uint8_t addr_type)
 {
 	struct btconn *conn;
+	const uint8_t *ia, *ra;
 
 	conn = malloc(sizeof(*conn));
 	if (!conn)
@@ -595,11 +736,23 @@ static void init_conn(struct bthost *bthost, uint16_t handle, uint8_t addr_type)
 
 	memset(conn, 0, sizeof(*conn));
 	conn->handle = handle;
+	memcpy(conn->bdaddr, bdaddr, 6);
 	conn->addr_type = addr_type;
 	conn->next_cid = 0x0040;
 
 	conn->next = bthost->conns;
 	bthost->conns = conn;
+
+	if (bthost->conn_init) {
+		ia = bthost->bdaddr;
+		ra = conn->bdaddr;
+	} else {
+		ia = conn->bdaddr;
+		ra = bthost->bdaddr;
+	}
+
+	conn->smp_data = smp_conn_add(bthost->smp_data, handle, ia, ra,
+							bthost->conn_init);
 
 	if (bthost->new_conn_cb)
 		bthost->new_conn_cb(conn->handle, bthost->new_conn_data);
@@ -616,7 +769,7 @@ static void evt_conn_complete(struct bthost *bthost, const void *data,
 	if (ev->status)
 		return;
 
-	init_conn(bthost, le16_to_cpu(ev->handle), BDADDR_BREDR);
+	init_conn(bthost, le16_to_cpu(ev->handle), ev->bdaddr, BDADDR_BREDR);
 }
 
 static void evt_disconn_complete(struct bthost *bthost, const void *data,
@@ -655,6 +808,163 @@ static void evt_num_completed_packets(struct bthost *bthost, const void *data,
 		return;
 }
 
+static void evt_auth_complete(struct bthost *bthost, const void *data,
+								uint8_t len)
+{
+	const struct bt_hci_evt_auth_complete *ev = data;
+	struct bt_hci_cmd_set_conn_encrypt cp;
+
+	if (len < sizeof(*ev))
+		return;
+
+	if (ev->status)
+		return;
+
+	cp.handle = ev->handle;
+	cp.encr_mode = 0x01;
+
+	send_command(bthost, BT_HCI_CMD_SET_CONN_ENCRYPT, &cp, sizeof(cp));
+}
+
+static void evt_pin_code_request(struct bthost *bthost, const void *data,
+								uint8_t len)
+{
+	const struct bt_hci_evt_pin_code_request *ev = data;
+
+	if (len < sizeof(*ev))
+		return;
+
+	if (bthost->pin_len > 0) {
+		struct bt_hci_cmd_pin_code_request_reply cp;
+
+		memset(&cp, 0, sizeof(cp));
+		memcpy(cp.bdaddr, ev->bdaddr, 6);
+		cp.pin_len = bthost->pin_len;
+		memcpy(cp.pin_code, bthost->pin, bthost->pin_len);
+
+		send_command(bthost, BT_HCI_CMD_PIN_CODE_REQUEST_REPLY,
+							&cp, sizeof(cp));
+	} else {
+		struct bt_hci_cmd_pin_code_request_neg_reply cp;
+
+		memcpy(cp.bdaddr, ev->bdaddr, 6);
+		send_command(bthost, BT_HCI_CMD_PIN_CODE_REQUEST_NEG_REPLY,
+							&cp, sizeof(cp));
+	}
+}
+
+static void evt_link_key_request(struct bthost *bthost, const void *data,
+								uint8_t len)
+{
+	const struct bt_hci_evt_link_key_request *ev = data;
+	struct bt_hci_cmd_link_key_request_neg_reply cp;
+
+	if (len < sizeof(*ev))
+		return;
+
+	memset(&cp, 0, sizeof(cp));
+	memcpy(cp.bdaddr, ev->bdaddr, 6);
+
+	send_command(bthost, BT_HCI_CMD_LINK_KEY_REQUEST_NEG_REPLY,
+							&cp, sizeof(cp));
+}
+
+static void evt_link_key_notify(struct bthost *bthost, const void *data,
+								uint8_t len)
+{
+	const struct bt_hci_evt_link_key_notify *ev = data;
+
+	if (len < sizeof(*ev))
+		return;
+}
+
+static void evt_encrypt_change(struct bthost *bthost, const void *data,
+								uint8_t len)
+{
+	const struct bt_hci_evt_encrypt_change *ev = data;
+	struct btconn *conn;
+	uint16_t handle;
+
+	if (len < sizeof(*ev))
+		return;
+
+	handle = acl_handle(ev->handle);
+	conn = bthost_find_conn(bthost, handle);
+	if (!conn)
+		return;
+
+	conn->encr_mode = ev->encr_mode;
+}
+
+static void evt_io_cap_response(struct bthost *bthost, const void *data,
+								uint8_t len)
+{
+	const struct bt_hci_evt_io_capability_response *ev = data;
+	struct btconn *conn;
+
+	if (len < sizeof(*ev))
+		return;
+
+	conn = bthost_find_conn_by_bdaddr(bthost, ev->bdaddr);
+	if (!conn)
+		return;
+}
+
+static void evt_io_cap_request(struct bthost *bthost, const void *data,
+								uint8_t len)
+{
+	const struct bt_hci_evt_io_capability_request *ev = data;
+	struct bt_hci_cmd_io_capability_request_reply cp;
+	struct btconn *conn;
+
+	if (len < sizeof(*ev))
+		return;
+
+	conn = bthost_find_conn_by_bdaddr(bthost, ev->bdaddr);
+	if (!conn)
+		return;
+
+	memcpy(cp.bdaddr, ev->bdaddr, 6);
+	cp.capability = bthost->io_capability;
+	cp.oob_data = 0x00;
+	cp.authentication = 0x00;
+
+	send_command(bthost, BT_HCI_CMD_IO_CAPABILITY_REQUEST_REPLY,
+							&cp, sizeof(cp));
+}
+
+static void evt_user_confirm_request(struct bthost *bthost, const void *data,
+								uint8_t len)
+{
+	const struct bt_hci_evt_user_confirm_request *ev = data;
+	struct btconn *conn;
+
+	if (len < sizeof(*ev))
+		return;
+
+	conn = bthost_find_conn_by_bdaddr(bthost, ev->bdaddr);
+	if (!conn)
+		return;
+
+	if (bthost->reject_user_confirm) {
+		send_command(bthost, BT_HCI_CMD_USER_CONFIRM_REQUEST_NEG_REPLY,
+								ev->bdaddr, 6);
+		return;
+	}
+
+	send_command(bthost, BT_HCI_CMD_USER_CONFIRM_REQUEST_REPLY,
+								ev->bdaddr, 6);
+}
+
+static void evt_simple_pairing_complete(struct bthost *bthost, const void *data,
+								uint8_t len)
+{
+	const struct bt_hci_evt_simple_pairing_complete *ev = data;
+
+	if (len < sizeof(*ev))
+		return;
+}
+
 static void evt_le_conn_complete(struct bthost *bthost, const void *data,
 								uint8_t len)
 {
@@ -672,7 +982,38 @@ static void evt_le_conn_complete(struct bthost *bthost, const void *data,
 	else
 		addr_type = BDADDR_LE_RANDOM;
 
-	init_conn(bthost, le16_to_cpu(ev->handle), addr_type);
+	init_conn(bthost, le16_to_cpu(ev->handle), ev->peer_addr, addr_type);
+}
+
+static void evt_le_ltk_request(struct bthost *bthost, const void *data,
+								uint8_t len)
+{
+	const struct bt_hci_evt_le_long_term_key_request *ev = data;
+	struct bt_hci_cmd_le_ltk_req_reply cp;
+	struct bt_hci_cmd_le_ltk_req_neg_reply *neg_cp = (void *) &cp;
+	uint16_t handle, div;
+	struct btconn *conn;
+	int err;
+
+	if (len < sizeof(*ev))
+		return;
+
+	handle = acl_handle(ev->handle);
+	conn = bthost_find_conn(bthost, handle);
+	if (!conn)
+		return;
+
+	div = le16_to_cpu(ev->diversifier);
+
+	cp.handle = ev->handle;
+
+	err = smp_get_ltk(conn->smp_data, ev->number, div, cp.ltk);
+	if (err < 0)
+		send_command(bthost, BT_HCI_CMD_LE_LTK_REQ_NEG_REPLY,
+						neg_cp, sizeof(*neg_cp));
+	else
+		send_command(bthost, BT_HCI_CMD_LE_LTK_REQ_REPLY, &cp,
+								sizeof(cp));
 }
 
 static void evt_le_meta_event(struct bthost *bthost, const void *data,
@@ -688,7 +1029,11 @@ static void evt_le_meta_event(struct bthost *bthost, const void *data,
 	case BT_HCI_EVT_LE_CONN_COMPLETE:
 		evt_le_conn_complete(bthost, evt_data, len - 1);
 		break;
+	case BT_HCI_EVT_LE_LONG_TERM_KEY_REQUEST:
+		evt_le_ltk_request(bthost, evt_data, len - 1);
+		break;
 	default:
+		printf("Unsupported LE Meta event 0x%2.2x\n", *event);
 		break;
 	}
 }
@@ -729,6 +1074,42 @@ static void process_evt(struct bthost *bthost, const void *data, uint16_t len)
 
 	case BT_HCI_EVT_NUM_COMPLETED_PACKETS:
 		evt_num_completed_packets(bthost, param, hdr->plen);
+		break;
+
+	case BT_HCI_EVT_AUTH_COMPLETE:
+		evt_auth_complete(bthost, param, hdr->plen);
+		break;
+
+	case BT_HCI_EVT_PIN_CODE_REQUEST:
+		evt_pin_code_request(bthost, param, hdr->plen);
+		break;
+
+	case BT_HCI_EVT_LINK_KEY_REQUEST:
+		evt_link_key_request(bthost, param, hdr->plen);
+		break;
+
+	case BT_HCI_EVT_LINK_KEY_NOTIFY:
+		evt_link_key_notify(bthost, param, hdr->plen);
+		break;
+
+	case BT_HCI_EVT_ENCRYPT_CHANGE:
+		evt_encrypt_change(bthost, param, hdr->plen);
+		break;
+
+	case BT_HCI_EVT_IO_CAPABILITY_RESPONSE:
+		evt_io_cap_response(bthost, param, hdr->plen);
+		break;
+
+	case BT_HCI_EVT_IO_CAPABILITY_REQUEST:
+		evt_io_cap_request(bthost, param, hdr->plen);
+		break;
+
+	case BT_HCI_EVT_USER_CONFIRM_REQUEST:
+		evt_user_confirm_request(bthost, param, hdr->plen);
+		break;
+
+	case BT_HCI_EVT_SIMPLE_PAIRING_COMPLETE:
+		evt_simple_pairing_complete(bthost, param, hdr->plen);
 		break;
 
 	case BT_HCI_EVT_LE_META_EVENT:
@@ -787,7 +1168,7 @@ static bool l2cap_conn_req(struct bthost *bthost, struct btconn *conn,
 							le16_to_cpu(psm));
 
 		memset(&conf_req, 0, sizeof(conf_req));
-		conf_req.dcid = rsp.dcid;
+		conf_req.dcid = rsp.scid;
 
 		l2cap_sig_send(bthost, conn, BT_L2CAP_PDU_CONFIG_REQ, 0,
 						&conf_req, sizeof(conf_req));
@@ -798,6 +1179,19 @@ static bool l2cap_conn_req(struct bthost *bthost, struct btconn *conn,
 	}
 
 	return true;
+}
+
+static void rfcomm_sabm_send(struct bthost *bthost, struct btconn *conn,
+			struct l2conn *l2conn, uint8_t cr, uint8_t dlci)
+{
+	struct rfcomm_cmd cmd;
+
+	cmd.address = RFCOMM_ADDR(cr, dlci);
+	cmd.control = RFCOMM_CTRL(RFCOMM_SABM, 1);
+	cmd.length = RFCOMM_LEN8(0);
+	cmd.fcs = rfcomm_fcs2((uint8_t *)&cmd);
+
+	send_acl(bthost, conn->handle, l2conn->dcid, &cmd, sizeof(cmd));
 }
 
 static bool l2cap_conn_rsp(struct bthost *bthost, struct btconn *conn,
@@ -823,6 +1217,9 @@ static bool l2cap_conn_rsp(struct bthost *bthost, struct btconn *conn,
 
 		l2cap_sig_send(bthost, conn, BT_L2CAP_PDU_CONFIG_REQ, 0,
 							&req, sizeof(req));
+	} else if (l2conn->psm == 0x0003 && !rsp->result && !rsp->status &&
+						bthost->rfcomm_conn_data) {
+		rfcomm_sabm_send(bthost, conn, l2conn, 1, 0);
 	}
 
 	return true;
@@ -1150,6 +1547,260 @@ static struct cid_hook *find_cid_hook(struct btconn *conn, uint16_t cid)
 	return NULL;
 }
 
+static void rfcomm_ua_send(struct bthost *bthost, struct btconn *conn,
+			struct l2conn *l2conn, uint8_t cr, uint8_t dlci)
+{
+	struct rfcomm_cmd cmd;
+
+	cmd.address = RFCOMM_ADDR(cr, dlci);
+	cmd.control = RFCOMM_CTRL(RFCOMM_UA, 1);
+	cmd.length = RFCOMM_LEN8(0);
+	cmd.fcs = rfcomm_fcs2((uint8_t *)&cmd);
+
+	send_acl(bthost, conn->handle, l2conn->dcid, &cmd, sizeof(cmd));
+}
+
+static void rfcomm_dm_send(struct bthost *bthost, struct btconn *conn,
+			struct l2conn *l2conn, uint8_t cr, uint8_t dlci)
+{
+	struct rfcomm_cmd cmd;
+
+	cmd.address = RFCOMM_ADDR(cr, dlci);
+	cmd.control = RFCOMM_CTRL(RFCOMM_DM, 1);
+	cmd.length = RFCOMM_LEN8(0);
+	cmd.fcs = rfcomm_fcs2((uint8_t *)&cmd);
+
+	send_acl(bthost, conn->handle, l2conn->dcid, &cmd, sizeof(cmd));
+}
+
+static void rfcomm_sabm_recv(struct bthost *bthost, struct btconn *conn,
+				struct l2conn *l2conn, const void *data,
+				uint16_t len)
+{
+	const struct rfcomm_cmd *hdr = data;
+	uint8_t dlci = RFCOMM_GET_DLCI(hdr->address);
+	struct rfcomm_conn_cb_data *cb;
+	uint8_t chan = RFCOMM_GET_CHANNEL(hdr->address);
+
+	cb = bthost_find_rfcomm_cb_by_channel(bthost, chan);
+	if (!dlci || cb) {
+		rfcomm_ua_send(bthost, conn, l2conn, 1, dlci);
+		if (cb && cb->func)
+			cb->func(conn->handle, l2conn->scid, cb->user_data,
+									true);
+	} else {
+		rfcomm_dm_send(bthost, conn, l2conn, 1, dlci);
+	}
+}
+
+static void rfcomm_disc_recv(struct bthost *bthost, struct btconn *conn,
+				struct l2conn *l2conn, const void *data,
+				uint16_t len)
+{
+	const struct rfcomm_cmd *hdr = data;
+	uint8_t dlci = RFCOMM_GET_DLCI(hdr->address);
+
+	rfcomm_ua_send(bthost, conn, l2conn, 0, dlci);
+}
+
+static void rfcomm_ua_recv(struct bthost *bthost, struct btconn *conn,
+				struct l2conn *l2conn, const void *data,
+				uint16_t len)
+{
+	const struct rfcomm_cmd *ua_hdr = data;
+	uint8_t channel = RFCOMM_GET_CHANNEL(ua_hdr->address);
+	struct rfcomm_connection_data *conn_data = bthost->rfcomm_conn_data;
+	uint8_t type = RFCOMM_GET_TYPE(ua_hdr->control);
+	uint8_t buf[14];
+	struct rfcomm_hdr *hdr;
+	struct rfcomm_mcc *mcc;
+	struct rfcomm_pn *pn_cmd;
+
+	if (channel && conn_data && conn_data->channel == channel) {
+		if (conn_data->cb)
+			conn_data->cb(conn->handle, l2conn->scid,
+						conn_data->user_data, true);
+		free(bthost->rfcomm_conn_data);
+		bthost->rfcomm_conn_data = NULL;
+		return;
+	}
+
+	if (!conn_data || !RFCOMM_TEST_CR(type))
+		return;
+
+	memset(buf, 0, sizeof(buf));
+
+	hdr = (struct rfcomm_hdr *) buf;
+	mcc = (struct rfcomm_mcc *) (buf + sizeof(*hdr));
+	pn_cmd = (struct rfcomm_pn *) (buf + sizeof(*hdr) + sizeof(*mcc));
+
+	hdr->address = RFCOMM_ADDR(1, 0);
+	hdr->control = RFCOMM_CTRL(RFCOMM_UIH, 0);
+	hdr->length  = RFCOMM_LEN8(sizeof(*mcc) + sizeof(*pn_cmd));
+
+	mcc->type = RFCOMM_MCC_TYPE(1, RFCOMM_PN);
+	mcc->length = RFCOMM_LEN8(sizeof(*pn_cmd));
+
+	pn_cmd->dlci = conn_data->channel * 2;
+	pn_cmd->priority = 7;
+	pn_cmd->ack_timer = 0;
+	pn_cmd->max_retrans = 0;
+	pn_cmd->mtu = 667;
+	pn_cmd->credits = 7;
+
+	buf[sizeof(*hdr) + sizeof(*mcc) + sizeof(*pn_cmd)] = rfcomm_fcs(buf);
+
+	send_acl(bthost, conn->handle, l2conn->dcid, buf, sizeof(buf));
+}
+
+static void rfcomm_dm_recv(struct bthost *bthost, struct btconn *conn,
+				struct l2conn *l2conn, const void *data,
+				uint16_t len)
+{
+	const struct rfcomm_cmd *hdr = data;
+	uint8_t channel = RFCOMM_GET_CHANNEL(hdr->address);
+	struct rfcomm_connection_data *conn_data = bthost->rfcomm_conn_data;
+
+	if (conn_data && conn_data->channel == channel) {
+		if (conn_data->cb)
+			conn_data->cb(conn->handle, l2conn->scid,
+						conn_data->user_data, false);
+		free(bthost->rfcomm_conn_data);
+		bthost->rfcomm_conn_data = NULL;
+	}
+}
+
+static void rfcomm_msc_recv(struct bthost *bthost, struct btconn *conn,
+					struct l2conn *l2conn, uint8_t cr,
+					const struct rfcomm_msc *msc)
+{
+	uint8_t buf[8];
+	struct rfcomm_hdr *hdr = (struct rfcomm_hdr *) buf;
+	struct rfcomm_mcc *mcc = (struct rfcomm_mcc *) (buf + sizeof(*hdr));
+	struct rfcomm_msc *msc_cmd = (struct rfcomm_msc *) (buf +
+								sizeof(*hdr) +
+								sizeof(*mcc));
+
+	hdr->address = RFCOMM_ADDR(0, 0);
+	hdr->control = RFCOMM_CTRL(RFCOMM_UIH, 0);
+	hdr->length  = RFCOMM_LEN8(sizeof(*mcc) + sizeof(*msc));
+	mcc->type = RFCOMM_MCC_TYPE(cr, RFCOMM_MSC);
+	mcc->length = RFCOMM_LEN8(sizeof(*msc));
+
+	msc_cmd->dlci = msc->dlci;
+	msc_cmd->v24_sig = msc->v24_sig;
+	buf[sizeof(*hdr) + sizeof(*mcc) + sizeof(*msc_cmd)] = rfcomm_fcs(buf);
+
+	send_acl(bthost, conn->handle, l2conn->dcid, buf, sizeof(buf));
+}
+
+static void rfcomm_pn_recv(struct bthost *bthost, struct btconn *conn,
+					struct l2conn *l2conn, uint8_t cr,
+					const struct rfcomm_pn *pn)
+{
+	uint8_t buf[14];
+	struct rfcomm_hdr *hdr;
+	struct rfcomm_mcc *mcc;
+	struct rfcomm_pn *pn_cmd;
+
+	if (!cr) {
+		rfcomm_sabm_send(bthost, conn, l2conn, 1,
+					bthost->rfcomm_conn_data->channel * 2);
+		return;
+	}
+
+	hdr = (struct rfcomm_hdr *) buf;
+	mcc = (struct rfcomm_mcc *) (buf + sizeof(*hdr));
+	pn_cmd = (struct rfcomm_pn *) (buf + sizeof(*hdr) + sizeof(*mcc));
+
+	memset(buf, 0, sizeof(buf));
+
+	hdr->address = RFCOMM_ADDR(1, 0);
+	hdr->control = RFCOMM_CTRL(RFCOMM_UIH, 0);
+	hdr->length  = RFCOMM_LEN8(sizeof(*mcc) + sizeof(*pn_cmd));
+
+	mcc->type = RFCOMM_MCC_TYPE(0, RFCOMM_PN);
+	mcc->length = RFCOMM_LEN8(sizeof(*pn_cmd));
+
+	pn_cmd->dlci = pn->dlci;
+	pn_cmd->priority = pn->priority;
+	pn_cmd->ack_timer = pn->ack_timer;
+	pn_cmd->max_retrans = pn->max_retrans;
+	pn_cmd->mtu = pn->mtu;
+	pn_cmd->credits = pn->credits;
+
+	buf[sizeof(*hdr) + sizeof(*mcc) + sizeof(*pn_cmd)] = rfcomm_fcs(buf);
+
+	send_acl(bthost, conn->handle, l2conn->dcid, buf, sizeof(buf));
+}
+
+static void rfcomm_mcc_recv(struct bthost *bthost, struct btconn *conn,
+			struct l2conn *l2conn, const void *data, uint16_t len)
+{
+	const struct rfcomm_mcc *mcc = data;
+
+	switch (RFCOMM_GET_MCC_TYPE(mcc->type)) {
+	case RFCOMM_MSC:
+		rfcomm_msc_recv(bthost, conn, l2conn,
+						RFCOMM_TEST_CR(mcc->type) / 2,
+						data + sizeof(*mcc));
+		break;
+	case RFCOMM_PN:
+		rfcomm_pn_recv(bthost, conn, l2conn,
+					RFCOMM_TEST_CR(mcc->type) / 2,
+					data + sizeof(*mcc));
+		break;
+	default:
+		break;
+	}
+}
+
+static void rfcomm_uih_recv(struct bthost *bthost, struct btconn *conn,
+				struct l2conn *l2conn, const void *data,
+				uint16_t len)
+{
+	const struct rfcomm_cmd *hdr = data;
+	const void *p;
+
+	if (RFCOMM_GET_DLCI(hdr->address))
+		return;
+
+	if (RFCOMM_TEST_EA(hdr->length))
+		p = data + sizeof(struct rfcomm_hdr);
+	else
+		p = data + sizeof(struct rfcomm_hdr) + sizeof(uint8_t);
+
+	rfcomm_mcc_recv(bthost, conn, l2conn, p, p - data);
+}
+
+static void process_rfcomm(struct bthost *bthost, struct btconn *conn,
+				struct l2conn *l2conn, const void *data,
+				uint16_t len)
+{
+	const struct rfcomm_hdr *hdr = data;
+
+	switch (RFCOMM_GET_TYPE(hdr->control)) {
+	case RFCOMM_SABM:
+		rfcomm_sabm_recv(bthost, conn, l2conn, data, len);
+		break;
+	case RFCOMM_DISC:
+		rfcomm_disc_recv(bthost, conn, l2conn, data, len);
+		break;
+	case RFCOMM_UA:
+		rfcomm_ua_recv(bthost, conn, l2conn, data, len);
+		break;
+	case RFCOMM_DM:
+		rfcomm_dm_recv(bthost, conn, l2conn, data, len);
+		break;
+	case RFCOMM_UIH:
+		rfcomm_uih_recv(bthost, conn, l2conn, data, len);
+		break;
+	default:
+		printf("Unknown frame type\n");
+		break;
+	}
+}
+
 static void process_acl(struct bthost *bthost, const void *data, uint16_t len)
 {
 	const struct bt_hci_acl_hdr *acl_hdr = data;
@@ -1157,6 +1808,7 @@ static void process_acl(struct bthost *bthost, const void *data, uint16_t len)
 	uint16_t handle, cid, acl_len, l2_len;
 	struct cid_hook *hook;
 	struct btconn *conn;
+	struct l2conn *l2conn;
 	const void *l2_data;
 
 	if (len < sizeof(*acl_hdr) + sizeof(*l2_hdr))
@@ -1194,8 +1846,16 @@ static void process_acl(struct bthost *bthost, const void *data, uint16_t len)
 	case 0x0005:
 		l2cap_le_sig(bthost, conn, l2_data, l2_len);
 		break;
+	case 0x0006:
+		smp_data(conn->smp_data, l2_data, l2_len);
+		break;
 	default:
-		printf("Packet for unknown CID 0x%04x (%u)\n", cid, cid);
+		l2conn = btconn_find_l2cap_conn_by_scid(conn, cid);
+		if (l2conn && l2conn->psm == 0x0003)
+			process_rfcomm(bthost, conn, l2conn, l2_data, l2_len);
+		else
+			printf("Packet for unknown CID 0x%04x (%u)\n", cid,
+									cid);
 		break;
 	}
 }
@@ -1242,6 +1902,8 @@ void bthost_set_connect_cb(struct bthost *bthost, bthost_new_conn_cb cb,
 void bthost_hci_connect(struct bthost *bthost, const uint8_t *bdaddr,
 							uint8_t addr_type)
 {
+	bthost->conn_init = true;
+
 	if (addr_type == BDADDR_BREDR) {
 		struct bt_hci_cmd_create_conn cc;
 
@@ -1273,12 +1935,33 @@ void bthost_set_adv_enable(struct bthost *bthost, uint8_t enable)
 	send_command(bthost, BT_HCI_CMD_LE_SET_ADV_ENABLE, &enable, 1);
 }
 
+void bthost_write_ssp_mode(struct bthost *bthost, uint8_t mode)
+{
+	send_command(bthost, BT_HCI_CMD_WRITE_SIMPLE_PAIRING_MODE, &mode, 1);
+}
+
+void bthost_request_auth(struct bthost *bthost, uint16_t handle)
+{
+	struct btconn *conn;
+
+	conn = bthost_find_conn(bthost, handle);
+	if (!conn)
+		return;
+
+	if (conn->addr_type == BDADDR_BREDR) {
+		struct bt_hci_cmd_auth_requested cp;
+
+		cp.handle = cpu_to_le16(handle);
+		send_command(bthost, BT_HCI_CMD_AUTH_REQUESTED, &cp, sizeof(cp));
+	} else {
+		smp_pair(conn->smp_data);
+	}
+}
+
 void bthost_le_start_encrypt(struct bthost *bthost, uint16_t handle,
 							const uint8_t ltk[16])
 {
 	struct bt_hci_cmd_le_start_encrypt cmd;
-
-	printf("bthost_le_start_encrypt(handle %u)\n", handle);
 
 	memset(&cmd, 0, sizeof(cmd));
 	cmd.handle = htobs(handle);
@@ -1304,10 +1987,46 @@ void bthost_add_l2cap_server(struct bthost *bthost, uint16_t psm,
 	bthost->new_l2cap_conn_data = data;
 }
 
+void bthost_set_pin_code(struct bthost *bthost, const uint8_t *pin,
+							uint8_t pin_len)
+{
+	memcpy(bthost->pin, pin, pin_len);
+	bthost->pin_len = pin_len;
+}
+
+void bthost_set_io_capability(struct bthost *bthost, uint8_t io_capability)
+{
+	bthost->io_capability = io_capability;
+}
+
+void bthost_set_reject_user_confirm(struct bthost *bthost, bool reject)
+{
+	bthost->reject_user_confirm = reject;
+}
+
+void bthost_add_rfcomm_server(struct bthost *bthost, uint8_t channel,
+				bthost_rfcomm_connect_cb func, void *user_data)
+{
+	struct rfcomm_conn_cb_data *data;
+
+	data = malloc(sizeof(struct rfcomm_conn_cb_data));
+	if (!data)
+		return;
+
+	data->channel = channel;
+	data->user_data = user_data;
+	data->func = func;
+	data->next = bthost->new_rfcomm_conn_data;
+
+	bthost->new_rfcomm_conn_data = data;
+}
+
 void bthost_start(struct bthost *bthost)
 {
 	if (!bthost)
 		return;
+
+	bthost->smp_data = smp_start(bthost);
 
 	bthost->ncmd = 1;
 
@@ -1316,6 +2035,41 @@ void bthost_start(struct bthost *bthost)
 	send_command(bthost, BT_HCI_CMD_READ_BD_ADDR, NULL, 0);
 }
 
+bool bthost_connect_rfcomm(struct bthost *bthost, uint16_t handle,
+				uint8_t channel, bthost_rfcomm_connect_cb func,
+				void *user_data)
+{
+	struct rfcomm_connection_data *data;
+	struct bt_l2cap_pdu_conn_req req;
+	struct btconn *conn;
+
+	if (bthost->rfcomm_conn_data)
+		return false;
+
+	conn = bthost_find_conn(bthost, handle);
+	if (!conn)
+		return false;
+
+	data = malloc(sizeof(struct rfcomm_connection_data));
+	if (!data)
+		return false;
+
+	data->channel = channel;
+	data->conn = conn;
+	data->cb = func;
+	data->user_data = user_data;
+
+	bthost->rfcomm_conn_data = data;
+
+	req.psm = cpu_to_le16(0x0003);
+	req.scid = cpu_to_le16(conn->next_cid++);
+
+	return bthost_l2cap_req(bthost, handle, BT_L2CAP_PDU_CONN_REQ,
+					&req, sizeof(req), NULL, NULL);
+}
+
 void bthost_stop(struct bthost *bthost)
 {
+	smp_stop(bthost->smp_data);
+	bthost->smp_data = NULL;
 }

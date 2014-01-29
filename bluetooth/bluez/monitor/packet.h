@@ -40,13 +40,18 @@ void packet_del_filter(unsigned long filter);
 void packet_select_index(uint16_t index);
 
 void packet_hexdump(const unsigned char *buf, uint16_t len);
+void packet_print_error(const char *label, uint8_t error);
 void packet_print_version(const char *label, uint8_t version,
 				const char *sublabel, uint16_t subversion);
 void packet_print_company(const char *label, uint16_t company);
 void packet_print_addr(const char *label, const void *data, bool random);
 void packet_print_ad(const void *data, uint8_t size);
+void packet_print_features_lmp(const uint8_t *features, uint8_t page);
 void packet_print_features_ll(const uint8_t *features);
+void packet_print_channel_map_lmp(const uint8_t *map);
 void packet_print_channel_map_ll(const uint8_t *map);
+void packet_print_io_capability(uint8_t capability);
+void packet_print_io_authentication(uint8_t authentication);
 
 void packet_control(struct timeval *tv, uint16_t index, uint16_t opcode,
 					const void *data, uint16_t size);

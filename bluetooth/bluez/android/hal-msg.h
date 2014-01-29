@@ -231,22 +231,26 @@ struct hal_cmd_le_test_mode {
 
 /* Bluetooth Socket HAL api */
 
+#define HAL_SOCK_RFCOMM		0x01
+#define HAL_SOCK_SCO		0x02
+#define HAL_SOCK_L2CAP		0x03
+
 #define HAL_OP_SOCK_LISTEN		0x01
 struct hal_cmd_sock_listen {
-	uint8_t  type;
-	uint8_t  name[256];
-	uint8_t  uuid[16];
-	uint16_t channel;
-	uint8_t  flags;
+	uint8_t type;
+	uint8_t name[256];
+	uint8_t uuid[16];
+	int32_t channel;
+	uint8_t flags;
 } __attribute__((packed));
 
 #define HAL_OP_SOCK_CONNECT		0x02
 struct hal_cmd_sock_connect {
-	uint8_t  bdaddr[6];
-	uint8_t  type;
-	uint8_t  uuid[16];
-	uint16_t channel;
-	uint8_t  flags;
+	uint8_t bdaddr[6];
+	uint8_t type;
+	uint8_t uuid[16];
+	int32_t channel;
+	uint8_t flags;
 } __attribute__((packed));
 
 /* Bluetooth HID Host HAL API */
@@ -559,6 +563,10 @@ struct hal_ev_a2dp_conn_state {
 	uint8_t state;
 	uint8_t bdaddr[6];
 } __attribute__((packed));
+
+#define HAL_AUDIO_SUSPEND			0x00
+#define HAL_AUDIO_STOPPED			0x01
+#define HAL_AUDIO_STARTED			0x02
 
 #define HAL_EV_A2DP_AUDIO_STATE			0x82
 struct hal_ev_a2dp_audio_state {

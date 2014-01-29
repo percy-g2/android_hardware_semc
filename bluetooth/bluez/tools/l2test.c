@@ -287,7 +287,7 @@ static int setopts(int sk, struct l2cap_options *opts)
 {
 	if (bdaddr_type == BDADDR_BREDR || cid)
 		return setsockopt(sk, SOL_L2CAP, L2CAP_OPTIONS, opts,
-								sizeof(opts));
+								sizeof(*opts));
 
 	return setsockopt(sk, SOL_BLUETOOTH, BT_RCVMTU, &opts->imtu,
 							sizeof(opts->imtu));
@@ -782,7 +782,7 @@ static void dump_mode(int sk)
 		data_size = imtu;
 
 	if (defer_setup) {
-		len = read(sk, buf, sizeof(buf));
+		len = read(sk, buf, data_size);
 		if (len < 0)
 			syslog(LOG_ERR, "Initial read error: %s (%d)",
 						strerror(errno), errno);
@@ -842,7 +842,7 @@ static void recv_mode(int sk)
 		data_size = imtu;
 
 	if (defer_setup) {
-		len = read(sk, buf, sizeof(buf));
+		len = read(sk, buf, data_size);
 		if (len < 0)
 			syslog(LOG_ERR, "Initial read error: %s (%d)",
 						strerror(errno), errno);

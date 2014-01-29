@@ -80,7 +80,7 @@ include_HEADERS += $(lib_headers)
 lib_LTLIBRARIES += lib/libbluetooth.la
 
 lib_libbluetooth_la_SOURCES = $(lib_headers) $(lib_sources)
-lib_libbluetooth_la_LDFLAGS = $(AM_LDFLAGS) -version-info 20:4:17
+lib_libbluetooth_la_LDFLAGS = $(AM_LDFLAGS) -version-info 20:5:17
 lib_libbluetooth_la_DEPENDENCIES = $(local_headers)
 endif
 
@@ -149,6 +149,8 @@ src_bluetoothd_SOURCES = $(builtin_sources) \
 			src/device.h src/device.c src/attio.h \
 			src/dbus-common.c src/dbus-common.h \
 			src/eir.h src/eir.c \
+			src/shared/io.h src/shared/io-glib.c \
+			src/shared/queue.h src/shared/queue.c \
 			src/shared/util.h src/shared/util.c \
 			src/shared/mgmt.h src/shared/mgmt.c
 src_bluetoothd_LDADD = lib/libbluetooth-internal.la gdbus/libgdbus-internal.la \
@@ -198,7 +200,8 @@ endif
 
 EXTRA_DIST += $(test_scripts)
 
-EXTRA_DIST += doc/assigned-numbers.txt doc/supported-features.txt
+EXTRA_DIST += doc/assigned-numbers.txt doc/supported-features.txt \
+				doc/test-coverage.txt doc/settings-storage.txt
 
 EXTRA_DIST += doc/mgmt-api.txt \
 		doc/adapter-api.txt doc/device-api.txt \
@@ -237,6 +240,8 @@ unit_test_crc_LDADD = @GLIB_LIBS@
 unit_tests += unit/test-mgmt
 
 unit_test_mgmt_SOURCES = unit/test-mgmt.c \
+				src/shared/io.h src/shared/io-glib.c \
+				src/shared/queue.h src/shared/queue.c \
 				src/shared/util.h src/shared/util.c \
 				src/shared/mgmt.h src/shared/mgmt.c
 unit_test_mgmt_LDADD = @GLIB_LIBS@

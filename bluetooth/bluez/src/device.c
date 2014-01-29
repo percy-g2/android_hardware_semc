@@ -118,6 +118,7 @@ struct browse_req {
 	int search_uuid;
 	int reconnect_attempt;
 	guint listener_id;
+	uint16_t sdp_flags;
 };
 
 struct included_search {
@@ -2504,7 +2505,6 @@ static bool device_match_profile(struct btd_device *device,
 struct probe_data {
 	struct btd_device *dev;
 	GSList *uuids;
-	char addr[18];
 };
 
 static void dev_probe(struct btd_profile *p, void *user_data)
@@ -2579,15 +2579,16 @@ void device_probe_profiles(struct btd_device *device, GSList *uuids)
 {
 	struct probe_data d = { device, uuids };
 	GSList *l;
+	char addr[18];
 
-	ba2str(&device->bdaddr, d.addr);
+	ba2str(&device->bdaddr, addr);
 
 	if (device->blocked) {
-		DBG("Skipping profiles for blocked device %s", d.addr);
+		DBG("Skipping profiles for blocked device %s", addr);
 		goto add_uuids;
 	}
 
-	DBG("Probing profiles for device %s", d.addr);
+	DBG("Probing profiles for device %s", addr);
 
 	btd_profile_foreach(dev_probe, &d);
 
@@ -2971,7 +2972,8 @@ static void browse_cb(sdp_list_t *recs, int err, gpointer user_data)
 		sdp_uuid16_create(&uuid, uuid_list[req->search_uuid++]);
 		bt_search_service(btd_adapter_get_address(adapter),
 						&device->bdaddr, &uuid,
-						browse_cb, user_data, NULL);
+						browse_cb, user_data, NULL,
+						req->sdp_flags);
 		return;
 	}
 
@@ -3151,8 +3153,7 @@ static int service_by_range_cmp(gconstpointer a, gconstpointer b)
 	return memcmp(&prim->range, range, sizeof(*range));
 }
 
-static void find_included_cb(GSList *includes, uint8_t status,
-						gpointer user_data)
+static void find_included_cb(uint8_t status, GSList *includes, void *user_data)
 {
 	struct included_search *search = user_data;
 	struct btd_device *device = search->req->device;
@@ -3222,7 +3223,7 @@ static void find_included_services(struct browse_req *req, GSList *services)
 					find_included_cb, search);
 }
 
-static void primary_cb(GSList *services, guint8 status, gpointer user_data)
+static void primary_cb(uint8_t status, GSList *services, void *user_data)
 {
 	struct browse_req *req = user_data;
 
@@ -3267,6 +3268,11 @@ static void att_connect_cb(GIOChannel *io, GError *gerr, gpointer user_data)
 	}
 
 	attrib = g_attrib_new(io);
+	if (!attrib) {
+		error("Unable to create new GAttrib instance");
+		goto done;
+	}
+
 	device->attachid = attrib_channel_attach(attrib);
 	if (device->attachid == 0)
 		error("Attribute server attach failure!");
@@ -3494,6 +3500,31 @@ done:
 	return 0;
 }
 
+static uint16_t get_sdp_flags(struct btd_device *device)
+{
+	uint16_t vid, pid;
+
+	vid = btd_device_get_vendor(device);
+	pid = btd_device_get_product(device);
+
+	/* Sony DualShock 4 is not respecting negotiated L2CAP MTU. This might
+	 * results in SDP response being dropped by kernel. Workaround this by
+	 * forcing SDP code to use bigger MTU while connecting.
+	 */
+	if (vid == 0x054c && pid == 0x05c4)
+		return SDP_LARGE_MTU;
+
+	if (btd_adapter_ssp_enabled(device->adapter))
+		return 0;
+
+	/* if no EIR try matching Sony DualShock 4 with name and class */
+	if (!strncmp(device->name, "Wireless Controller", MAX_NAME_LENGTH) &&
+			device->class == 0x2508)
+		return SDP_LARGE_MTU;
+
+	return 0;
+}
+
 static int device_browse_sdp(struct btd_device *device, DBusMessage *msg)
 {
 	struct btd_adapter *adapter = device->adapter;
@@ -3508,8 +3539,11 @@ static int device_browse_sdp(struct btd_device *device, DBusMessage *msg)
 	req->device = device;
 	sdp_uuid16_create(&uuid, uuid_list[req->search_uuid++]);
 
+	req->sdp_flags = get_sdp_flags(device);
+
 	err = bt_search_service(btd_adapter_get_address(adapter),
-				&device->bdaddr, &uuid, browse_cb, req, NULL);
+				&device->bdaddr, &uuid, browse_cb, req, NULL,
+				req->sdp_flags);
 	if (err < 0) {
 		browse_request_free(req);
 		return err;

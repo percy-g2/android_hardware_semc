@@ -43,7 +43,6 @@
 
 void arp_dump(int level, struct frame *frm)
 {
-#if 0
 	int i;
 	char buf[20];
 	struct sockaddr_in sai;
@@ -68,7 +67,6 @@ void arp_dump(int level, struct frame *frm)
 	printf("(%s)\n", buf);
 	frm->ptr += sizeof(struct ether_arp);
 	frm->len -= sizeof(struct ether_arp);
-#endif
 	raw_dump(level, frm);		// not needed.
 }
 

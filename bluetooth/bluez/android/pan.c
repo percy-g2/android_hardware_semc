@@ -28,6 +28,11 @@
 #include <unistd.h>
 #include <fcntl.h>
 #include <glib.h>
+#include <sys/ioctl.h>
+#include <sys/socket.h>
+#include <sys/wait.h>
+#include <net/if.h>
+#include <linux/sockios.h>
 
 #include "btio/btio.h"
 #include "lib/bluetooth.h"
@@ -44,6 +49,11 @@
 #include "utils.h"
 #include "bluetooth.h"
 
+#define SVC_HINT_NETWORKING 0x02
+
+#define BNEP_BRIDGE "bnep"
+#define FORWARD_DELAY_PATH "/sys/class/net/"BNEP_BRIDGE"/bridge/forward_delay"
+
 static bdaddr_t adapter_addr;
 GSList *devices = NULL;
 uint8_t local_role = HAL_PAN_ROLE_NONE;
@@ -55,6 +65,15 @@ struct pan_device {
 	uint8_t		role;
 	GIOChannel	*io;
 	struct bnep	*session;
+	guint		watch;
+};
+
+static struct {
+	uint32_t	record_id;
+	GIOChannel	*io;
+} nap_dev = {
+	.record_id = 0,
+	.io = NULL,
 };
 
 static int device_cmp(gconstpointer s, gconstpointer user_data)
@@ -67,13 +86,19 @@ static int device_cmp(gconstpointer s, gconstpointer user_data)
 
 static void pan_device_free(struct pan_device *dev)
 {
+	if (dev->watch > 0) {
+		bnep_server_delete(BNEP_BRIDGE, dev->iface, &dev->dst);
+		g_source_remove(dev->watch);
+	}
+
 	if (dev->io) {
 		g_io_channel_shutdown(dev->io, FALSE, NULL);
 		g_io_channel_unref(dev->io);
-		dev->io = NULL;
 	}
 
-	bnep_free(dev->session);
+	if (dev->session)
+		bnep_free(dev->session);
+
 	devices = g_slist_remove(devices, dev);
 	g_free(dev);
 
@@ -284,7 +309,7 @@ static void bt_pan_disconnect(const void *buf, uint16_t len)
 
 	dev = l->data;
 
-	if (dev->conn_state == HAL_PAN_STATE_CONNECTED)
+	if (dev->conn_state == HAL_PAN_STATE_CONNECTED && dev->session)
 		bnep_disconnect(dev->session);
 
 	bt_pan_notify_conn_state(dev, HAL_PAN_STATE_DISCONNECTED);
@@ -294,22 +319,294 @@ failed:
 	ipc_send_rsp(HAL_SERVICE_ID_PAN, HAL_OP_PAN_DISCONNECT, status);
 }
 
+static gboolean nap_watchdog_cb(GIOChannel *chan, GIOCondition cond,
+							gpointer user_data)
+{
+	struct pan_device *dev = user_data;
+
+	DBG("disconnected");
+
+	bt_pan_notify_conn_state(dev, HAL_PAN_STATE_DISCONNECTED);
+
+	return FALSE;
+}
+static gboolean nap_setup_cb(GIOChannel *chan, GIOCondition cond,
+							gpointer user_data)
+{
+	struct pan_device *dev = user_data;
+	uint8_t packet[BNEP_MTU];
+	struct bnep_setup_conn_req *req = (void *) packet;
+	uint16_t src_role, dst_role, rsp = BNEP_CONN_NOT_ALLOWED;
+	int sk, n;
+
+	if (cond & (G_IO_ERR | G_IO_HUP | G_IO_NVAL)) {
+		error("Hangup or error or inval on BNEP socket");
+		return FALSE;
+	}
+
+	sk = g_io_channel_unix_get_fd(chan);
+
+	/* Reading BNEP_SETUP_CONNECTION_REQUEST_MSG */
+	n = read(sk, packet, sizeof(packet));
+	if (n  < 0) {
+		error("read(): %s(%d)", strerror(errno), errno);
+		goto failed;
+	}
+
+	/* Highest known control command id BNEP_FILTER_MULT_ADDR_RSP 0x06 */
+	if (req->type == BNEP_CONTROL &&
+			req->ctrl > BNEP_FILTER_MULT_ADDR_RSP) {
+		error("cmd not understood");
+		bnep_send_ctrl_rsp(sk, BNEP_CONTROL, BNEP_CMD_NOT_UNDERSTOOD,
+								req->ctrl);
+		goto failed;
+	}
+
+	if (req->type != BNEP_CONTROL || req->ctrl != BNEP_SETUP_CONN_REQ) {
+		error("cmd is not BNEP_SETUP_CONN_REQ %02X %02X", req->type,
+								req->ctrl);
+		goto failed;
+	}
+
+	rsp = bnep_setup_decode(req, &dst_role, &src_role);
+	if (rsp) {
+		error("bnep_setup_decode failed");
+		goto failed;
+	}
+
+	rsp = bnep_setup_chk(dst_role, src_role);
+	if (rsp) {
+		error("benp_setup_chk failed");
+		goto failed;
+	}
+
+	if (bnep_server_add(sk, dst_role, BNEP_BRIDGE, dev->iface,
+							&dev->dst) < 0) {
+		error("server_connadd failed");
+		rsp = BNEP_CONN_NOT_ALLOWED;
+		goto failed;
+	}
+
+	rsp = BNEP_SUCCESS;
+	bnep_send_ctrl_rsp(sk, BNEP_CONTROL, BNEP_SETUP_CONN_RSP, rsp);
+
+	dev->watch = g_io_add_watch(chan, G_IO_HUP | G_IO_ERR | G_IO_NVAL,
+							nap_watchdog_cb, dev);
+	g_io_channel_unref(dev->io);
+	dev->io = NULL;
+
+	bt_pan_notify_ctrl_state(dev, HAL_PAN_CTRL_ENABLED);
+	bt_pan_notify_conn_state(dev, HAL_PAN_STATE_CONNECTED);
+
+	return FALSE;
+
+failed:
+	bnep_send_ctrl_rsp(sk, BNEP_CONTROL, BNEP_SETUP_CONN_RSP, rsp);
+	pan_device_free(dev);
+
+	return FALSE;
+}
+
+static void nap_connect_cb(GIOChannel *chan, GError *err, gpointer user_data)
+{
+	struct pan_device *dev = user_data;
+
+	DBG("");
+
+	if (err) {
+		error("%s", err->message);
+		bt_pan_notify_conn_state(dev, HAL_PAN_STATE_DISCONNECTED);
+		return;
+	}
+
+	g_io_channel_set_close_on_unref(chan, TRUE);
+	dev->watch = g_io_add_watch(chan,
+				G_IO_IN | G_IO_HUP | G_IO_ERR | G_IO_NVAL,
+				nap_setup_cb, dev);
+}
+
+static void nap_confirm_cb(GIOChannel *chan, gpointer data)
+{
+	struct pan_device *dev = NULL;
+	bdaddr_t dst;
+	char address[18];
+	GError *err = NULL;
+
+	DBG("");
+
+	bt_io_get(chan, &err, BT_IO_OPT_DEST_BDADDR, &dst,
+			BT_IO_OPT_DEST, address, BT_IO_OPT_INVALID);
+	if (err) {
+		error("%s", err->message);
+		g_error_free(err);
+		goto failed;
+	}
+
+	DBG("incoming connect request from %s", address);
+	dev = g_new0(struct pan_device, 1);
+	bacpy(&dev->dst, &dst);
+	local_role = HAL_PAN_ROLE_NAP;
+	dev->role = HAL_PAN_ROLE_PANU;
+
+	dev->io = g_io_channel_ref(chan);
+	g_io_channel_set_close_on_unref(dev->io, TRUE);
+
+	if (!bt_io_accept(dev->io, nap_connect_cb, dev, NULL, &err)) {
+		error("bt_io_accept: %s", err->message);
+		g_error_free(err);
+		goto failed;
+	}
+
+	devices = g_slist_append(devices, dev);
+	bt_pan_notify_conn_state(dev, HAL_PAN_STATE_CONNECTING);
+
+	return;
+
+failed:
+	g_free(dev);
+	bt_pan_notify_conn_state(dev, HAL_PAN_STATE_DISCONNECTED);
+}
+
+static int set_forward_delay(void)
+{
+	int fd, ret;
+
+	fd = open(FORWARD_DELAY_PATH, O_RDWR);
+	if (fd < 0)
+		return -errno;
+
+	ret = write(fd, "0", sizeof("0"));
+	close(fd);
+
+	return ret;
+}
+
+static int nap_create_bridge(void)
+{
+	int sk, err;
+
+	DBG("%s", BNEP_BRIDGE);
+
+	sk = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
+	if (sk < 0)
+		return -EOPNOTSUPP;
+
+	if (ioctl(sk, SIOCBRADDBR, BNEP_BRIDGE) < 0) {
+		err = -errno;
+		if (err != -EEXIST) {
+			close(sk);
+			return -EOPNOTSUPP;
+		}
+	}
+
+	err = set_forward_delay();
+	if (err < 0)
+		ioctl(sk, SIOCBRDELBR, BNEP_BRIDGE);
+
+	close(sk);
+
+	return err;
+}
+
+static int nap_remove_bridge(void)
+{
+	int sk, err;
+
+	DBG("%s", BNEP_BRIDGE);
+
+	sk = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
+	if (sk < 0)
+		return -EOPNOTSUPP;
+
+	err = ioctl(sk, SIOCBRDELBR, BNEP_BRIDGE);
+	close(sk);
+
+	if (err < 0)
+		return -EOPNOTSUPP;
+
+	return 0;
+}
+
+static void destroy_nap_device(void)
+{
+	DBG("");
+
+	nap_remove_bridge();
+
+	if (nap_dev.io) {
+		g_io_channel_shutdown(nap_dev.io, FALSE, NULL);
+		g_io_channel_unref(nap_dev.io);
+		nap_dev.io = NULL;
+	}
+}
+
+static int register_nap_server(void)
+{
+	GError *gerr = NULL;
+	int err;
+
+	DBG("");
+
+	err = nap_create_bridge();
+	if (err < 0)
+		return err;
+
+	nap_dev.io = bt_io_listen(NULL, nap_confirm_cb, NULL, NULL, &gerr,
+					BT_IO_OPT_SOURCE_BDADDR, &adapter_addr,
+					BT_IO_OPT_PSM, BNEP_PSM,
+					BT_IO_OPT_SEC_LEVEL, BT_IO_SEC_MEDIUM,
+					BT_IO_OPT_OMTU, BNEP_MTU,
+					BT_IO_OPT_IMTU, BNEP_MTU,
+					BT_IO_OPT_INVALID);
+
+	if (!nap_dev.io) {
+		destroy_nap_device();
+		error("%s", gerr->message);
+		g_error_free(gerr);
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 static void bt_pan_enable(const void *buf, uint16_t len)
 {
 	const struct hal_cmd_pan_enable *cmd = buf;
 	uint8_t status;
+	int err;
 
-	switch (cmd->local_role) {
-	case HAL_PAN_ROLE_PANU:
-	case HAL_PAN_ROLE_NAP:
-		DBG("Not Implemented");
-		status  = HAL_STATUS_FAILED;
-		break;
-	default:
-		status = HAL_STATUS_UNSUPPORTED;
-		break;
+	DBG("");
+
+	if (local_role == cmd->local_role) {
+		status = HAL_STATUS_SUCCESS;
+		goto reply;
 	}
 
+	/* destroy existing server */
+	destroy_nap_device();
+
+	switch (cmd->local_role) {
+	case HAL_PAN_ROLE_NAP:
+		break;
+	case HAL_PAN_ROLE_NONE:
+		status = HAL_STATUS_SUCCESS;
+		goto reply;
+	default:
+		status = HAL_STATUS_UNSUPPORTED;
+		goto reply;
+	}
+
+	local_role = cmd->local_role;
+	err = register_nap_server();
+	if (err < 0) {
+		status = HAL_STATUS_FAILED;
+		destroy_nap_device();
+		goto reply;
+	}
+
+	status = HAL_STATUS_SUCCESS;
+
+reply:
 	ipc_send_rsp(HAL_SERVICE_ID_PAN, HAL_OP_PAN_ENABLE, status);
 }
 
@@ -335,31 +632,141 @@ static const struct ipc_handler cmd_handlers[] = {
 	{ bt_pan_disconnect, false, sizeof(struct hal_cmd_pan_disconnect) },
 };
 
+static sdp_record_t *pan_record(void)
+{
+	sdp_list_t *svclass, *pfseq, *apseq, *root, *aproto;
+	uuid_t root_uuid, pan, l2cap, bnep;
+	sdp_profile_desc_t profile[1];
+	sdp_list_t *proto[2];
+	sdp_data_t *v, *p;
+	uint16_t psm = BNEP_PSM, version = 0x0100;
+	uint16_t security = 0x0001, type = 0xfffe;
+	uint32_t rate = 0;
+	const char *desc = "Network Access Point", *name = "Network Service";
+	sdp_record_t *record;
+	uint16_t ptype[] = { 0x0800, /* IPv4 */ 0x0806,  /* ARP */ };
+	sdp_data_t *head, *pseq, *data;
+
+	record = sdp_record_alloc();
+	if (!record)
+		return NULL;
+
+	record->attrlist = NULL;
+	record->pattern = NULL;
+
+	sdp_uuid16_create(&pan, NAP_SVCLASS_ID);
+	svclass = sdp_list_append(NULL, &pan);
+	sdp_set_service_classes(record, svclass);
+
+	sdp_uuid16_create(&profile[0].uuid, NAP_PROFILE_ID);
+	profile[0].version = 0x0100;
+	pfseq = sdp_list_append(NULL, &profile[0]);
+	sdp_set_profile_descs(record, pfseq);
+	sdp_set_info_attr(record, name, NULL, desc);
+	sdp_attr_add_new(record, SDP_ATTR_NET_ACCESS_TYPE, SDP_UINT16, &type);
+	sdp_attr_add_new(record, SDP_ATTR_MAX_NET_ACCESSRATE,
+							SDP_UINT32, &rate);
+
+	sdp_uuid16_create(&root_uuid, PUBLIC_BROWSE_GROUP);
+	root = sdp_list_append(NULL, &root_uuid);
+	sdp_set_browse_groups(record, root);
+
+	sdp_uuid16_create(&l2cap, L2CAP_UUID);
+	proto[0] = sdp_list_append(NULL, &l2cap);
+	p = sdp_data_alloc(SDP_UINT16, &psm);
+	proto[0] = sdp_list_append(proto[0], p);
+	apseq = sdp_list_append(NULL, proto[0]);
+
+	sdp_uuid16_create(&bnep, BNEP_UUID);
+	proto[1] = sdp_list_append(NULL, &bnep);
+	v = sdp_data_alloc(SDP_UINT16, &version);
+	proto[1] = sdp_list_append(proto[1], v);
+
+	head = sdp_data_alloc(SDP_UINT16, &ptype[0]);
+	data = sdp_data_alloc(SDP_UINT16, &ptype[1]);
+	sdp_seq_append(head, data);
+
+	pseq = sdp_data_alloc(SDP_SEQ16, head);
+	proto[1] = sdp_list_append(proto[1], pseq);
+	apseq = sdp_list_append(apseq, proto[1]);
+	aproto = sdp_list_append(NULL, apseq);
+	sdp_set_access_protos(record, aproto);
+	sdp_add_lang_attr(record);
+	sdp_attr_add_new(record, SDP_ATTR_SECURITY_DESC, SDP_UINT16, &security);
+
+	sdp_data_free(p);
+	sdp_data_free(v);
+	sdp_list_free(apseq, NULL);
+	sdp_list_free(root, NULL);
+	sdp_list_free(aproto, NULL);
+	sdp_list_free(proto[0], NULL);
+	sdp_list_free(proto[1], NULL);
+	sdp_list_free(svclass, NULL);
+	sdp_list_free(pfseq, NULL);
+
+	return record;
+}
+
 bool bt_pan_register(const bdaddr_t *addr)
 {
+	sdp_record_t *rec;
 	int err;
 
 	DBG("");
 
 	bacpy(&adapter_addr, addr);
 
-	err = bnep_init();
-	if (err) {
-		error("bnep init failed");
+	rec = pan_record();
+	if (!rec) {
+		error("Failed to allocate PAN record");
 		return false;
 	}
 
+	if (bt_adapter_add_record(rec, SVC_HINT_NETWORKING) < 0) {
+		error("Failed to register PAN record");
+		sdp_record_free(rec);
+		return false;
+	}
+
+	err = bnep_init();
+	if (err) {
+		error("bnep init failed");
+		bt_adapter_remove_record(rec->handle);
+		return false;
+	}
+
+	err = register_nap_server();
+	if (err < 0) {
+		bt_adapter_remove_record(rec->handle);
+		bnep_cleanup();
+		return false;
+	}
+
+	nap_dev.record_id = rec->handle;
 	ipc_register(HAL_SERVICE_ID_PAN, cmd_handlers,
 						G_N_ELEMENTS(cmd_handlers));
 
 	return true;
 }
 
+static void pan_device_disconnected(gpointer data, gpointer user_data)
+{
+	struct pan_device *dev = data;
+
+	bt_pan_notify_conn_state(dev, HAL_PAN_STATE_DISCONNECTED);
+}
+
 void bt_pan_unregister(void)
 {
 	DBG("");
 
+	g_slist_foreach(devices, pan_device_disconnected, NULL);
+	devices = NULL;
+
 	bnep_cleanup();
 
 	ipc_unregister(HAL_SERVICE_ID_PAN);
+	bt_adapter_remove_record(nap_dev.record_id);
+	nap_dev.record_id = 0;
+	destroy_nap_device();
 }

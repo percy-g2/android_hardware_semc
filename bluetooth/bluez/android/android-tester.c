@@ -39,16 +39,23 @@
 #include <hardware/hardware.h>
 #include <hardware/bluetooth.h>
 #include <hardware/bt_sock.h>
+#include <hardware/bt_hh.h>
 
 #include "utils.h"
+
+struct priority_property {
+	bt_property_t prop;
+	int prio;
+};
 
 struct generic_data {
 	int expected_adapter_status;
 	uint32_t expect_settings_set;
 	int expected_cb_count;
 	bt_property_t set_property;
-	bt_property_t expected_property;
 	bt_callbacks_t expected_hal_cb;
+	struct priority_property *expected_properties;
+	uint8_t expected_properties_num;
 };
 
 struct socket_data {
@@ -60,6 +67,16 @@ struct socket_data {
 	int flags;
 	bt_status_t expected_status;
 	bool test_channel;
+};
+
+struct hidhost_generic_data {
+	bthh_status_t expected_status;
+	int expected_conn_state;
+	int expected_cb_count;
+	bthh_protocol_mode_t expected_protocol_mode;
+	int expected_report;
+	bthh_callbacks_t expected_hal_cb;
+	int expected_report_size;
 };
 
 #define WAIT_FOR_SIGNAL_TIME 2 /* in seconds */
@@ -79,67 +96,49 @@ struct test_data {
 	struct hw_device_t *device;
 	const bt_interface_t *if_bluetooth;
 	const btsock_interface_t *if_sock;
+	const bthh_interface_t *if_hid;
 
-	bool mgmt_settings_set;
-	bool cb_count_checked;
-	bool status_checked;
-	bool property_checked;
+	int conditions_left;
 
 	/* Set to true if test conditions are initialized */
 	bool test_init_done;
 
+	bool test_result_set;
+
 	int cb_count;
+	GSList *expected_properties_list;
+
+	/* hidhost */
+	uint16_t sdp_handle;
+	uint16_t sdp_cid;
+	uint16_t ctrl_handle;
+	uint16_t ctrl_cid;
+	uint16_t intr_handle;
+	uint16_t intr_cid;
 };
 
 static char exec_dir[PATH_MAX + 1];
+
+static void mgmt_debug(const char *str, void *user_data)
+{
+	const char *prefix = user_data;
+
+	tester_print("%s%s", prefix, str);
+}
 
 static void test_update_state(void)
 {
 	struct test_data *data = tester_get_data();
 
-	if (!(data->cb_count_checked))
-		return;
-	if (!(data->mgmt_settings_set))
-		return;
-	if (!(data->status_checked))
-		return;
-	if (!(data->property_checked))
-		return;
-	tester_test_passed();
-}
-
-static void test_device_property(bt_property_t *property,
-			bt_property_type_t type, const void *value, int len)
-{
-	if (value == NULL) {
-		tester_warn("NULL property passed");
-		tester_test_failed();
-		return;
-	}
-
-	if (property->type != type) {
-		tester_warn("Wrong remote property type %d, expected %d",
-							type, property->type);
-		tester_test_failed();
-		return;
-	}
-
-	if (property->len != len) {
-		tester_warn("Wrong remote property len %d, expected %d",
-							len, property->len);
-		tester_test_failed();
-		return;
-	}
-
-	if (memcmp(property->val, value, len)) {
-		tester_warn("Wrong remote property value");
-		tester_test_failed();
+	if (data->conditions_left == 0 && !data->test_result_set) {
+		data->test_result_set = true;
+		tester_test_passed();
 	}
 }
 
 static void test_mgmt_settings_set(struct test_data *data)
 {
-	data->mgmt_settings_set = true;
+	data->conditions_left--;
 
 	test_update_state();
 }
@@ -174,10 +173,10 @@ static void check_cb_count(void)
 	if (!data->test_init_done)
 		return;
 
-	if (data->cb_count == 0)
-		data->cb_count_checked = true;
-
-	test_update_state();
+	if (data->cb_count == 0) {
+		data->conditions_left--;
+		test_update_state();
+	}
 }
 
 static void expected_cb_count_init(struct test_data *data)
@@ -187,7 +186,6 @@ static void expected_cb_count_init(struct test_data *data)
 	data->cb_count = test_data->expected_cb_count;
 
 	check_cb_count();
-
 }
 
 static void mgmt_cb_init(struct test_data *data)
@@ -207,20 +205,31 @@ static void expected_status_init(struct test_data *data)
 	const struct generic_data *test_data = data->test_data;
 
 	if (test_data->expected_adapter_status == BT_STATUS_NOT_EXPECTED)
-		data->status_checked = true;
+		data->conditions_left--;
 }
 
 static void test_property_init(struct test_data *data)
 {
 	const struct generic_data *test_data = data->test_data;
+	GSList *l = data->expected_properties_list;
+	int i;
 
-	if (!test_data->expected_property.type)
-		data->property_checked = true;
+	if (!test_data->expected_properties_num) {
+		data->conditions_left--;
+		return;
+	}
+
+	for (i = 0; i < test_data->expected_properties_num; i++)
+		l = g_slist_prepend(l, &(test_data->expected_properties[i]));
+
+	data->expected_properties_list = l;
 }
 
 static void init_test_conditions(struct test_data *data)
 {
 	data->test_init_done = true;
+
+	data->conditions_left = 4;
 
 	expected_cb_count_init(data);
 	mgmt_cb_init(data);
@@ -233,19 +242,88 @@ static void check_expected_status(uint8_t status)
 	struct test_data *data = tester_get_data();
 	const struct generic_data *test_data = data->test_data;
 
-	if (test_data->expected_adapter_status == status)
-		data->status_checked = true;
-	else
+	if (test_data->expected_adapter_status == status) {
+		data->conditions_left--;
+		test_update_state();
+	} else
 		tester_test_failed();
+}
 
+static int locate_property(gconstpointer expected_data,
+						gconstpointer received_prop)
+{
+	bt_property_t rec_prop = *((bt_property_t *)received_prop);
+	bt_property_t exp_prop =
+			((struct priority_property *)expected_data)->prop;
+
+	if (exp_prop.type && (exp_prop.type != rec_prop.type))
+		return 1;
+	if (exp_prop.len && (exp_prop.len != rec_prop.len))
+		return 1;
+	if (exp_prop.val && memcmp(exp_prop.val, rec_prop.val, exp_prop.len))
+		return 1;
+
+	return 0;
+}
+
+static int compare_priorities(gconstpointer prop_list, gconstpointer priority)
+{
+	int prio = GPOINTER_TO_INT(priority);
+	int comp_prio = ((struct priority_property *)prop_list)->prio;
+
+	if (prio > comp_prio)
+		return 0;
+
+	return 1;
+}
+
+static bool check_prop_priority(int rec_prop_prio)
+{
+	struct test_data *data = tester_get_data();
+	GSList *l = data->expected_properties_list;
+
+	if (!rec_prop_prio || !g_slist_length(l))
+		return true;
+
+	if (g_slist_find_custom(l, GINT_TO_POINTER(rec_prop_prio),
+							&compare_priorities))
+		return false;
+
+	return true;
+}
+
+static void check_expected_property(bt_property_t received_prop)
+{
+	struct test_data *data = tester_get_data();
+	int rec_prio;
+	GSList *l = data->expected_properties_list;
+	GSList *found_exp_prop;
+
+	if (!g_slist_length(l))
+		return;
+
+	found_exp_prop = g_slist_find_custom(l, &received_prop,
+							&locate_property);
+
+	if (found_exp_prop) {
+		rec_prio = ((struct priority_property *)
+						(found_exp_prop->data))->prio;
+		if (check_prop_priority(rec_prio))
+			l = g_slist_remove(l, found_exp_prop->data);
+	}
+
+	data->expected_properties_list = l;
+
+	if (g_slist_length(l))
+		return;
+
+	data->conditions_left--;
 	test_update_state();
 }
 
 static bool check_test_property(bt_property_t received_prop,
 						bt_property_t expected_prop)
 {
-	struct test_data *data = tester_get_data();
-
 	if (expected_prop.type && (expected_prop.type != received_prop.type))
 		return false;
 	if (expected_prop.len && (expected_prop.len != received_prop.len))
@@ -254,7 +332,7 @@ static bool check_test_property(bt_property_t received_prop,
 							expected_prop.len))
 		return false;
 
-	return data->property_checked = true;
+	return true;
 }
 
 static void read_info_callback(uint8_t status, uint16_t length,
@@ -363,15 +441,17 @@ static void test_pre_setup(const void *test_data)
 {
 	struct test_data *data = tester_get_data();
 
-	if (!tester_use_debug())
-		fclose(stderr);
-
 	data->mgmt = mgmt_new_default();
 	if (!data->mgmt) {
 		tester_warn("Failed to setup management interface");
 		tester_pre_setup_failed();
 		return;
 	}
+
+	if (!tester_use_debug())
+		fclose(stderr);
+	else
+		mgmt_set_debug(data->mgmt, mgmt_debug, "mgmt: ", NULL);
 
 	mgmt_send(data->mgmt, MGMT_OP_READ_INDEX_LIST, MGMT_INDEX_NONE, 0,
 				NULL, read_index_list_callback, NULL, NULL);
@@ -438,12 +518,12 @@ static void emulator(int pipe, int hci_index)
 	memset(buf, 0, sizeof(buf));
 
 	len = read(fd, buf, sizeof(buf));
-	if (len <= 0 || (strcmp(buf, "ctl.start=bluetoothd")))
+	if (len <= 0 || (strcmp(buf, "bluetooth.start=daemon")))
 		goto failed;
 
 	close(pipe);
 	close(fd);
-	bluetoothd_start(hci_index);
+	return bluetoothd_start(hci_index);
 
 failed:
 	close(pipe);
@@ -495,6 +575,7 @@ static void enable_success_cb(bt_state_t state)
 	if (state == BT_STATE_ON) {
 		setup_powered_emulated_remote();
 		data->cb_count--;
+		check_cb_count();
 	}
 }
 
@@ -502,8 +583,10 @@ static void disable_success_cb(bt_state_t state)
 {
 	struct test_data *data = tester_get_data();
 
-	if (state == BT_STATE_OFF)
+	if (state == BT_STATE_OFF) {
 		data->cb_count--;
+		check_cb_count();
+	}
 }
 
 static void adapter_state_changed_cb(bt_state_t state)
@@ -514,7 +597,6 @@ static void adapter_state_changed_cb(bt_state_t state)
 	if (data->test_init_done &&
 			test->expected_hal_cb.adapter_state_changed_cb) {
 		test->expected_hal_cb.adapter_state_changed_cb(state);
-		check_cb_count();
 		return;
 	}
 
@@ -526,8 +608,10 @@ static void discovery_start_success_cb(bt_discovery_state_t state)
 {
 	struct test_data *data = tester_get_data();
 
-	if (state == BT_DISCOVERY_STARTED)
+	if (state == BT_DISCOVERY_STARTED) {
 		data->cb_count--;
+		check_cb_count();
+	}
 }
 
 static void discovery_start_done_cb(bt_discovery_state_t state)
@@ -537,6 +621,8 @@ static void discovery_start_done_cb(bt_discovery_state_t state)
 
 	status = data->if_bluetooth->start_discovery();
 	data->cb_count--;
+
+	check_cb_count();
 	check_expected_status(status);
 }
 
@@ -551,8 +637,10 @@ static void discovery_stop_success_cb(bt_discovery_state_t state)
 		data->cb_count--;
 		return;
 	}
-	if (state == BT_DISCOVERY_STOPPED && data->cb_count == 1)
+	if (state == BT_DISCOVERY_STOPPED && data->cb_count == 1) {
 		data->cb_count--;
+		check_cb_count();
+	}
 }
 
 static void discovery_device_found_state_changed_cb(bt_discovery_state_t state)
@@ -563,8 +651,38 @@ static void discovery_device_found_state_changed_cb(bt_discovery_state_t state)
 		data->cb_count--;
 		return;
 	}
-	if (state == BT_DISCOVERY_STOPPED && data->cb_count == 1)
+	if (state == BT_DISCOVERY_STOPPED && data->cb_count == 1) {
 		data->cb_count--;
+		check_cb_count();
+	}
+}
+
+static void remote_discovery_state_changed_cb(bt_discovery_state_t state)
+{
+	struct test_data *data = tester_get_data();
+
+	if (state == BT_DISCOVERY_STARTED && data->cb_count == 3) {
+		data->cb_count--;
+		return;
+	}
+	if (state == BT_DISCOVERY_STOPPED && data->cb_count == 1) {
+		data->cb_count--;
+		check_cb_count();
+	}
+}
+
+static void remote_setprop_disc_state_changed_cb(bt_discovery_state_t state)
+{
+	struct test_data *data = tester_get_data();
+
+	if (state == BT_DISCOVERY_STARTED && data->cb_count == 4) {
+		data->cb_count--;
+		return;
+	}
+	if (state == BT_DISCOVERY_STOPPED) {
+		data->cb_count--;
+		check_cb_count();
+	}
 }
 
 static void discovery_state_changed_cb(bt_discovery_state_t state)
@@ -574,7 +692,6 @@ static void discovery_state_changed_cb(bt_discovery_state_t state)
 
 	if (test && test->expected_hal_cb.discovery_state_changed_cb) {
 		test->expected_hal_cb.discovery_state_changed_cb(state);
-		check_cb_count();
 	}
 }
 
@@ -582,50 +699,137 @@ static void discovery_device_found_cb(int num_properties,
 						bt_property_t *properties)
 {
 	struct test_data *data = tester_get_data();
-	const uint8_t *remote_bdaddr =
-					hciemu_get_client_bdaddr(data->hciemu);
-	const uint32_t emu_remote_type = BT_DEVICE_DEVTYPE_BREDR;
-	const int32_t emu_remote_rssi = -60;
+	uint8_t *remote_bdaddr =
+			(uint8_t *)hciemu_get_client_bdaddr(data->hciemu);
+	uint32_t emu_remote_type = BT_DEVICE_DEVTYPE_BREDR;
+	int32_t emu_remote_rssi = -60;
 	bt_bdaddr_t emu_remote_bdaddr;
 	int i;
+	bt_property_t expected_prop;
+	bt_property_t received_prop;
 
 	data->cb_count--;
+	check_cb_count();
 
-	if (num_properties < 1)
+	if (num_properties < 1) {
 		tester_test_failed();
+		return;
+	}
 
 	bdaddr2android((const bdaddr_t *) remote_bdaddr, &emu_remote_bdaddr);
 
 	for (i = 0; i < num_properties; i++) {
-		int prop_len;
-		const void *prop_data;
+		received_prop = properties[i];
 
 		switch (properties[i].type) {
 		case BT_PROPERTY_BDADDR:
-			prop_len = sizeof(emu_remote_bdaddr);
-			prop_data = &emu_remote_bdaddr;
-
+			expected_prop.type = BT_PROPERTY_BDADDR;
+			expected_prop.len = sizeof(emu_remote_bdaddr);
+			expected_prop.val = &emu_remote_bdaddr;
 			break;
+
 		case BT_PROPERTY_TYPE_OF_DEVICE:
-			prop_len = sizeof(emu_remote_type);
-			prop_data = &emu_remote_type;
-
+			expected_prop.type = BT_PROPERTY_TYPE_OF_DEVICE;
+			expected_prop.len = sizeof(emu_remote_type);
+			expected_prop.val = &emu_remote_type;
 			break;
+
 		case BT_PROPERTY_REMOTE_RSSI:
-			prop_len = sizeof(emu_remote_rssi);
-			prop_data = &emu_remote_rssi;
-
+			expected_prop.type = BT_PROPERTY_REMOTE_RSSI;
+			expected_prop.len = sizeof(emu_remote_rssi);
+			expected_prop.val = &emu_remote_rssi;
 			break;
-		default:
-			prop_len = 0;
-			prop_data = NULL;
 
+		default:
+			expected_prop.type = 0;
+			expected_prop.len = 0;
+			expected_prop.val = NULL;
 			break;
 		}
 
-		test_device_property(&properties[i], properties[i].type,
-							prop_data, prop_len);
+		if (!check_test_property(received_prop, expected_prop)) {
+			tester_test_failed();
+			return;
+		}
 	}
+}
+
+static void remote_getprops_device_found_cb(int num_properties,
+						bt_property_t *properties)
+{
+	struct test_data *data = tester_get_data();
+	uint8_t *bdaddr = (uint8_t *)hciemu_get_client_bdaddr(data->hciemu);
+	bt_bdaddr_t remote_addr;
+
+	bdaddr2android((const bdaddr_t *)bdaddr, &remote_addr.address);
+
+	if (data->cb_count == 2)
+		data->cb_count--;
+
+	data->if_bluetooth->get_remote_device_properties(&remote_addr);
+}
+
+static void remote_get_property_device_found_cb(int num_properties,
+						bt_property_t *properties)
+{
+	struct test_data *data = tester_get_data();
+	const struct generic_data *test = data->test_data;
+	bt_status_t status;
+	uint8_t *bdaddr = (uint8_t *)hciemu_get_client_bdaddr(data->hciemu);
+	bt_bdaddr_t remote_addr;
+
+	const bt_property_t prop = test->expected_properties[0].prop;
+
+	bdaddr2android((const bdaddr_t *)bdaddr, &remote_addr.address);
+
+	if (data->cb_count == 2)
+		data->cb_count--;
+
+	status = data->if_bluetooth->get_remote_device_property(&remote_addr,
+								prop.type);
+	check_expected_status(status);
+}
+
+static void remote_setprop_device_found_cb(int num_properties,
+						bt_property_t *properties)
+{
+	struct test_data *data = tester_get_data();
+	const struct generic_data *test = data->test_data;
+	bt_status_t status;
+	uint8_t *bdaddr = (uint8_t *)hciemu_get_client_bdaddr(data->hciemu);
+	bt_bdaddr_t remote_addr;
+
+	const bt_property_t prop = test->expected_properties[0].prop;
+
+	bdaddr2android((const bdaddr_t *)bdaddr, &remote_addr.address);
+
+	if (data->cb_count == 3)
+		data->cb_count--;
+
+	status = data->if_bluetooth->set_remote_device_property(&remote_addr,
+									&prop);
+	check_expected_status(status);
+}
+
+static void remote_setprop_fail_device_found_cb(int num_properties,
+						bt_property_t *properties)
+{
+	struct test_data *data = tester_get_data();
+	const struct generic_data *test = data->test_data;
+	bt_status_t status;
+	uint8_t *bdaddr = (uint8_t *)hciemu_get_client_bdaddr(data->hciemu);
+	bt_bdaddr_t remote_addr;
+
+	const bt_property_t prop = test->expected_properties[0].prop;
+
+	bdaddr2android((const bdaddr_t *)bdaddr, &remote_addr.address);
+
+	if (data->cb_count == 2)
+		data->cb_count--;
+
+	status = data->if_bluetooth->set_remote_device_property(&remote_addr,
+									&prop);
+	check_expected_status(status);
 }
 
 static void device_found_cb(int num_properties, bt_property_t *properties)
@@ -636,27 +840,18 @@ static void device_found_cb(int num_properties, bt_property_t *properties)
 	if (data->test_init_done && test->expected_hal_cb.device_found_cb) {
 		test->expected_hal_cb.device_found_cb(num_properties,
 								properties);
-		check_cb_count();
 	}
 }
 
 static void check_count_properties_cb(bt_status_t status, int num_properties,
 						bt_property_t *properties)
 {
-	struct test_data *data = tester_get_data();
+	int i;
 
-	data->cb_count--;
+	for (i = 0; i < num_properties; i++)
+		check_expected_property(properties[i]);
 }
 
-static void getprop_success_cb(bt_status_t status, int num_properties,
-						bt_property_t *properties)
-{
-	struct test_data *data = tester_get_data();
-	const struct generic_data *test = data->test_data;
-
-	if (check_test_property(properties[0], test->expected_property))
-		data->cb_count--;
-}
 
 static void adapter_properties_cb(bt_status_t status, int num_properties,
 						bt_property_t *properties)
@@ -669,21 +864,131 @@ static void adapter_properties_cb(bt_status_t status, int num_properties,
 		test->expected_hal_cb.adapter_properties_cb(
 							status, num_properties,
 							properties);
-		check_cb_count();
 	}
 }
+
+static void remote_test_device_properties_cb(bt_status_t status,
+				bt_bdaddr_t *bd_addr, int num_properties,
+				bt_property_t *properties)
+{
+	int i;
+
+	for (i = 0; i < num_properties; i++)
+		check_expected_property(properties[i]);
+}
+
+static void remote_setprop_device_properties_cb(bt_status_t status,
+				bt_bdaddr_t *bd_addr, int num_properties,
+				bt_property_t *properties)
+{
+	int i;
+	struct test_data *data = tester_get_data();
+	const struct generic_data *test = data->test_data;
+	uint8_t *bdaddr = (uint8_t *)hciemu_get_client_bdaddr(data->hciemu);
+	bt_bdaddr_t remote_addr;
+	const bt_property_t prop = test->expected_properties[1].prop;
+
+	for (i = 0; i < num_properties; i++)
+		check_expected_property(properties[i]);
+
+	if (g_slist_length(data->expected_properties_list) == 1) {
+		bdaddr2android((const bdaddr_t *)bdaddr, &remote_addr.address);
+		data->cb_count--;
+		check_cb_count();
+		data->if_bluetooth->get_remote_device_property(&remote_addr,
+								prop.type);
+	}
+}
+
+static void remote_device_properties_cb(bt_status_t status,
+				bt_bdaddr_t *bd_addr, int num_properties,
+				bt_property_t *properties)
+{
+	struct test_data *data = tester_get_data();
+	const struct generic_data *test = data->test_data;
+
+	if (data->test_init_done &&
+			test->expected_hal_cb.remote_device_properties_cb) {
+		test->expected_hal_cb.remote_device_properties_cb(status,
+					bd_addr, num_properties, properties);
+	}
+}
+
+static bt_bdaddr_t enable_done_bdaddr_val = { {0x00} };
+static char enable_done_bdname_val[] = "BlueZ for Android";
+static bt_uuid_t enable_done_uuids_val = {
+	.uu = { 0x00, 0x00, 0x12, 0x00, 0x00, 0x00, 0x10, 0x00, 0x80, 0x00,
+					0x00, 0x80, 0x5f, 0x9b, 0x34, 0xfb},
+};
+static bt_device_type_t enable_done_tod_val = BT_DEVICE_DEVTYPE_BREDR;
+static bt_scan_mode_t enable_done_scanmode_val = BT_SCAN_MODE_NONE;
+static uint32_t enable_done_disctimeout_val = 120;
+
+static struct priority_property enable_done_props[] = {
+	{
+	.prop.type = BT_PROPERTY_BDADDR,
+	.prop.len = sizeof(enable_done_bdaddr_val),
+	.prop.val = &enable_done_bdaddr_val,
+	.prio = 1,
+	},
+	{
+	.prop.type = BT_PROPERTY_BDNAME,
+	.prop.len = sizeof(enable_done_bdname_val) - 1,
+	.prop.val = &enable_done_bdname_val,
+	.prio = 2,
+	},
+	{
+	.prop.type = BT_PROPERTY_UUIDS,
+	.prop.len = sizeof(enable_done_uuids_val),
+	.prop.val = &enable_done_uuids_val,
+	.prio = 3,
+	},
+	{
+	.prop.type = BT_PROPERTY_CLASS_OF_DEVICE,
+	.prop.len = sizeof(uint32_t),
+	.prop.val = NULL,
+	.prio = 4,
+	},
+	{
+	.prop.type = BT_PROPERTY_TYPE_OF_DEVICE,
+	.prop.len = sizeof(enable_done_tod_val),
+	.prop.val = &enable_done_tod_val,
+	.prio = 5,
+	},
+	{
+	.prop.type = BT_PROPERTY_ADAPTER_SCAN_MODE,
+	.prop.len = sizeof(enable_done_scanmode_val),
+	.prop.val = &enable_done_scanmode_val,
+	.prio = 6,
+	},
+	{
+	.prop.type = BT_PROPERTY_ADAPTER_BONDED_DEVICES,
+	.prop.len = 0,
+	.prop.val = NULL,
+	.prio = 7,
+	},
+	{
+	.prop.type = BT_PROPERTY_ADAPTER_DISCOVERY_TIMEOUT,
+	.prop.len = sizeof(enable_done_disctimeout_val),
+	.prop.val = &enable_done_disctimeout_val,
+	.prio = 8,
+	},
+};
 
 static const struct generic_data bluetooth_enable_success_test = {
 	.expected_hal_cb.adapter_state_changed_cb = enable_success_cb,
 	.expected_hal_cb.adapter_properties_cb = check_count_properties_cb,
-	.expected_cb_count = 9,
+	.expected_cb_count = 1,
+	.expected_properties_num = 8,
+	.expected_properties = enable_done_props,
 	.expected_adapter_status = BT_STATUS_SUCCESS,
 };
 
-static const struct generic_data bluetooth_enable_done_test = {
+static const struct generic_data bluetooth_enable_success2_test = {
 	.expected_hal_cb.adapter_properties_cb = check_count_properties_cb,
-	.expected_cb_count = 8,
-	.expected_adapter_status = BT_STATUS_DONE,
+	.expected_adapter_status = BT_STATUS_SUCCESS,
+	.expected_properties_num = 8,
+	.expected_properties = enable_done_props,
 };
 
 static const struct generic_data bluetooth_disable_success_test = {
@@ -694,94 +999,146 @@ static const struct generic_data bluetooth_disable_success_test = {
 
 static char test_set_bdname[] = "test_bdname_set";
 
+static struct priority_property setprop_bdname_props[] = {
+	{
+	.prop.type = BT_PROPERTY_BDNAME,
+	.prop.val = test_set_bdname,
+	.prop.len = sizeof(test_set_bdname) - 1,
+	.prio = 0,
+	},
+};
+
 static const struct generic_data bluetooth_setprop_bdname_success_test = {
-	.expected_hal_cb.adapter_properties_cb = getprop_success_cb,
-	.expected_cb_count = 1,
-	.expected_adapter_status = BT_STATUS_SUCCESS,
-	.expected_property.type = BT_PROPERTY_BDNAME,
-	.expected_property.val = test_set_bdname,
-	.expected_property.len = sizeof(test_set_bdname) - 1,
+	.expected_hal_cb.adapter_properties_cb = check_count_properties_cb,
+	.expected_properties_num = 1,
+	.expected_properties = setprop_bdname_props,
 };
 
 static bt_scan_mode_t test_setprop_scanmode_val =
 					BT_SCAN_MODE_CONNECTABLE_DISCOVERABLE;
 
+static struct priority_property setprop_scanmode_props[] = {
+	{
+	.prop.type = BT_PROPERTY_ADAPTER_SCAN_MODE,
+	.prop.val = &test_setprop_scanmode_val,
+	.prop.len = sizeof(bt_scan_mode_t),
+	},
+};
+
 static const struct generic_data bluetooth_setprop_scanmode_success_test = {
-	.expected_hal_cb.adapter_properties_cb = getprop_success_cb,
-	.expected_cb_count = 1,
+	.expected_hal_cb.adapter_properties_cb = check_count_properties_cb,
+	.expected_properties_num = 1,
+	.expected_properties = setprop_scanmode_props,
 	.expected_adapter_status = BT_STATUS_SUCCESS,
-	.expected_property.type = BT_PROPERTY_ADAPTER_SCAN_MODE,
-	.expected_property.val = &test_setprop_scanmode_val,
-	.expected_property.len = sizeof(bt_scan_mode_t),
 };
 
 static uint32_t test_setprop_disctimeout_val = 120;
 
+static struct priority_property setprop_disctimeout_props[] = {
+	{
+	.prop.type = BT_PROPERTY_ADAPTER_DISCOVERY_TIMEOUT,
+	.prop.val = &test_setprop_disctimeout_val,
+	.prop.len = sizeof(test_setprop_disctimeout_val),
+	},
+};
+
 static const struct generic_data bluetooth_setprop_disctimeout_success_test = {
-	.expected_hal_cb.adapter_properties_cb = getprop_success_cb,
-	.expected_cb_count = 1,
+	.expected_hal_cb.adapter_properties_cb = check_count_properties_cb,
+	.expected_properties_num = 1,
+	.expected_properties = setprop_disctimeout_props,
 	.expected_adapter_status = BT_STATUS_SUCCESS,
-	.expected_property.type = BT_PROPERTY_ADAPTER_DISCOVERY_TIMEOUT,
-	.expected_property.val = &test_setprop_disctimeout_val,
-	.expected_property.len = sizeof(test_setprop_disctimeout_val),
+};
+
+static bt_bdaddr_t test_getprop_bdaddr_val = { {0x00} };
+
+static struct priority_property getprop_bdaddr_props[] = {
+	{
+	.prop.type = BT_PROPERTY_BDADDR,
+	.prop.val = &test_getprop_bdaddr_val,
+	.prop.len = sizeof(test_getprop_bdaddr_val),
+	},
 };
 
 static const struct generic_data bluetooth_getprop_bdaddr_success_test = {
-	.expected_hal_cb.adapter_properties_cb = getprop_success_cb,
-	.expected_cb_count = 1,
+	.expected_hal_cb.adapter_properties_cb = check_count_properties_cb,
+	.expected_properties_num = 1,
+	.expected_properties = getprop_bdaddr_props,
 	.expected_adapter_status = BT_STATUS_SUCCESS,
-	.expected_property.type = BT_PROPERTY_BDADDR,
-	.expected_property.val = NULL,
-	.expected_property.len = sizeof(bt_bdaddr_t),
 };
 
 static char test_bdname[] = "test_bdname_setget";
 
+static struct priority_property getprop_bdname_props[] = {
+	{
+	.prop.type = BT_PROPERTY_BDNAME,
+	.prop.val = &test_bdname,
+	.prop.len = sizeof(test_bdname) - 1,
+	},
+};
+
 static const struct generic_data bluetooth_getprop_bdname_success_test = {
-	.expected_hal_cb.adapter_properties_cb = getprop_success_cb,
-	.expected_cb_count = 1,
+	.expected_hal_cb.adapter_properties_cb = check_count_properties_cb,
+	.expected_properties_num = 1,
+	.expected_properties = getprop_bdname_props,
 	.expected_adapter_status = BT_STATUS_SUCCESS,
-	.expected_property.type = BT_PROPERTY_BDNAME,
-	.expected_property.val = test_bdname,
-	.expected_property.len = sizeof(test_bdname) - 1,
 };
 
 static unsigned char setprop_uuids[] = { 0xfb, 0x34, 0x9b, 0x5f, 0x80, 0x00,
 			0x00, 0x80, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00, 0x00,
 			0x00, 0x00 };
 
+static struct priority_property setprop_uuid_prop[] = {
+	{
+	.prop.type = BT_PROPERTY_UUIDS,
+	.prop.val = &setprop_uuids,
+	.prop.len = sizeof(setprop_uuids),
+	},
+};
+
 static const struct generic_data bluetooth_setprop_uuid_invalid_test = {
 	.expected_adapter_status = BT_STATUS_FAIL,
-	.set_property.type = BT_PROPERTY_UUIDS,
-	.set_property.val = &setprop_uuids,
-	.set_property.len = sizeof(setprop_uuids),
 };
 
 static uint32_t setprop_class_of_device = 0;
 
+static struct priority_property setprop_cod_props[] = {
+	{
+	.prop.type = BT_PROPERTY_CLASS_OF_DEVICE,
+	.prop.val = &setprop_class_of_device,
+	.prop.len = sizeof(setprop_class_of_device),
+	},
+};
+
 static const struct generic_data bluetooth_setprop_cod_invalid_test = {
 	.expected_adapter_status = BT_STATUS_FAIL,
-	.set_property.type = BT_PROPERTY_CLASS_OF_DEVICE,
-	.set_property.val = &setprop_class_of_device,
-	.set_property.len = sizeof(setprop_class_of_device),
 };
 
 static bt_device_type_t setprop_type_of_device = BT_DEVICE_DEVTYPE_BREDR;
 
+static struct priority_property setprop_tod_props[] = {
+	{
+	.prop.type = BT_PROPERTY_TYPE_OF_DEVICE,
+	.prop.val = &setprop_type_of_device,
+	.prop.len = sizeof(setprop_type_of_device),
+	},
+};
+
 static const struct generic_data bluetooth_setprop_tod_invalid_test = {
 	.expected_adapter_status = BT_STATUS_FAIL,
-	.set_property.type = BT_PROPERTY_TYPE_OF_DEVICE,
-	.set_property.val = &setprop_type_of_device,
-	.set_property.len = sizeof(setprop_type_of_device),
 };
 
 static int32_t setprop_remote_rssi = 0;
 
+static struct priority_property setprop_remote_rssi_props[] = {
+	{
+	.prop.type = BT_PROPERTY_REMOTE_RSSI,
+	.prop.val = &setprop_remote_rssi,
+	.prop.len = sizeof(setprop_remote_rssi),
+	},
+};
+
 static const struct generic_data bluetooth_setprop_remote_rssi_invalid_test = {
 	.expected_adapter_status = BT_STATUS_FAIL,
-	.set_property.type = BT_PROPERTY_REMOTE_RSSI,
-	.set_property.val = &setprop_remote_rssi,
-	.set_property.len = sizeof(setprop_remote_rssi),
 };
 
 static bt_service_record_t setprop_remote_service = {
@@ -790,12 +1147,188 @@ static bt_service_record_t setprop_remote_service = {
 	.name = "bt_name",
 };
 
+static struct priority_property setprop_service_record_props[] = {
+	{
+	.prop.type = BT_PROPERTY_SERVICE_RECORD,
+	.prop.val = &setprop_remote_service,
+	.prop.len = sizeof(setprop_remote_service),
+	},
+};
+
 static const struct generic_data
 			bluetooth_setprop_service_record_invalid_test = {
 	.expected_adapter_status = BT_STATUS_FAIL,
-	.set_property.type = BT_PROPERTY_SERVICE_RECORD,
-	.set_property.val = &setprop_remote_service,
-	.set_property.len = sizeof(setprop_remote_service),
+};
+
+static bt_bdaddr_t setprop_bdaddr = {
+	.address = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 },
+};
+
+static struct priority_property setprop_bdaddr_props[] = {
+	{
+	.prop.type = BT_PROPERTY_BDADDR,
+	.prop.val = &setprop_bdaddr,
+	.prop.len = sizeof(setprop_bdaddr),
+	},
+};
+
+static const struct generic_data bluetooth_setprop_bdaddr_invalid_test = {
+	.expected_adapter_status = BT_STATUS_FAIL,
+};
+
+static bt_scan_mode_t setprop_scanmode_connectable = BT_SCAN_MODE_CONNECTABLE;
+
+static struct priority_property setprop_scanmode_connectable_props[] = {
+	{
+	.prop.type = BT_PROPERTY_ADAPTER_SCAN_MODE,
+	.prop.val = &setprop_scanmode_connectable,
+	.prop.len = sizeof(setprop_scanmode_connectable),
+	},
+};
+
+static const struct generic_data
+			bluetooth_setprop_scanmode_connectable_success_test = {
+	.expected_hal_cb.adapter_properties_cb = check_count_properties_cb,
+	.expected_properties_num = 1,
+	.expected_properties = setprop_scanmode_connectable_props,
+	.expected_adapter_status = BT_STATUS_SUCCESS,
+};
+
+static bt_bdaddr_t setprop_bonded_devices = {
+	.address = { 0x00, 0x01, 0x02, 0x03, 0x04, 0x05 },
+};
+
+static struct priority_property setprop_bonded_devices_props[] = {
+	{
+	.prop.type = BT_PROPERTY_ADAPTER_BONDED_DEVICES,
+	.prop.val = &setprop_bonded_devices,
+	.prop.len = sizeof(setprop_bonded_devices),
+	},
+};
+
+static const struct generic_data
+			bluetooth_setprop_bonded_devices_invalid_test = {
+	.expected_adapter_status = BT_STATUS_FAIL,
+};
+
+static uint32_t getprop_cod = 0x00020c;
+
+static struct priority_property getprop_cod_props[] = {
+	{
+	.prop.type = BT_PROPERTY_CLASS_OF_DEVICE,
+	.prop.val = &getprop_cod,
+	.prop.len = sizeof(getprop_cod),
+	},
+};
+
+static const struct generic_data bluetooth_getprop_cod_success_test = {
+	.expected_hal_cb.adapter_properties_cb = check_count_properties_cb,
+	.expected_properties_num = 1,
+	.expected_properties = getprop_cod_props,
+	.expected_adapter_status = BT_STATUS_SUCCESS,
+};
+
+static bt_device_type_t getprop_tod = BT_DEVICE_DEVTYPE_BREDR;
+
+static struct priority_property getprop_tod_props[] = {
+	{
+	.prop.type = BT_PROPERTY_TYPE_OF_DEVICE,
+	.prop.val = &getprop_tod,
+	.prop.len = sizeof(getprop_tod),
+	},
+};
+
+static const struct generic_data bluetooth_getprop_tod_success_test = {
+	.expected_hal_cb.adapter_properties_cb = check_count_properties_cb,
+	.expected_properties_num = 1,
+	.expected_properties = getprop_tod_props,
+	.expected_adapter_status = BT_STATUS_SUCCESS,
+};
+
+static bt_scan_mode_t getprop_scanmode = BT_SCAN_MODE_NONE;
+
+static struct priority_property getprop_scanmode_props[] = {
+	{
+	.prop.type = BT_PROPERTY_ADAPTER_SCAN_MODE,
+	.prop.val = &getprop_scanmode,
+	.prop.len = sizeof(getprop_scanmode),
+	},
+};
+
+static const struct generic_data bluetooth_getprop_scanmode_success_test = {
+	.expected_hal_cb.adapter_properties_cb = check_count_properties_cb,
+	.expected_properties_num = 1,
+	.expected_properties = getprop_scanmode_props,
+	.expected_adapter_status = BT_STATUS_SUCCESS,
+};
+
+static uint32_t getprop_disctimeout_val = 120;
+
+static struct priority_property getprop_disctimeout_props[] = {
+	{
+	.prop.type = BT_PROPERTY_ADAPTER_DISCOVERY_TIMEOUT,
+	.prop.val = &getprop_disctimeout_val,
+	.prop.len = sizeof(getprop_disctimeout_val),
+	},
+};
+
+static const struct generic_data bluetooth_getprop_disctimeout_success_test = {
+	.expected_hal_cb.adapter_properties_cb = check_count_properties_cb,
+	.expected_properties_num = 1,
+	.expected_properties = getprop_disctimeout_props,
+	.expected_adapter_status = BT_STATUS_SUCCESS,
+};
+
+static bt_uuid_t getprop_uuids = {
+	.uu = { 0x00, 0x00, 0x12, 0x00, 0x00, 0x00, 0x10, 0x00, 0x80, 0x00,
+					0x00, 0x80, 0x5F, 0x9B, 0x34, 0xFB },
+};
+
+static struct priority_property getprop_uuids_props[] = {
+	{
+	.prop.type = BT_PROPERTY_UUIDS,
+	.prop.val = &getprop_uuids,
+	.prop.len = sizeof(getprop_uuids),
+	},
+};
+
+static const struct generic_data bluetooth_getprop_uuids_success_test = {
+	.expected_hal_cb.adapter_properties_cb = check_count_properties_cb,
+	.expected_properties_num = 1,
+	.expected_properties = getprop_uuids_props,
+	.expected_adapter_status = BT_STATUS_SUCCESS,
+};
+
+static struct priority_property getprop_bondeddev_props[] = {
+	{
+	.prop.type = BT_PROPERTY_ADAPTER_BONDED_DEVICES,
+	.prop.val = NULL,
+	.prop.len = 0,
+	},
+};
+
+static const struct generic_data bluetooth_getprop_bondeddev_success_test = {
+	.expected_hal_cb.adapter_properties_cb = check_count_properties_cb,
+	.expected_properties_num = 1,
+	.expected_properties = getprop_bondeddev_props,
+	.expected_adapter_status = BT_STATUS_SUCCESS,
+};
+
+static bt_scan_mode_t setprop_scanmode_none = BT_SCAN_MODE_NONE;
+
+static struct priority_property setprop_scanmode_none_props[] = {
+	{
+	.prop.type = BT_PROPERTY_ADAPTER_SCAN_MODE,
+	.prop.val = &setprop_scanmode_none,
+	.prop.len = sizeof(setprop_scanmode_none),
+	},
+};
+
+static const struct generic_data bluetooth_setprop_scanmode_none_success2_test = {
+	.expected_hal_cb.adapter_properties_cb = check_count_properties_cb,
+	.expected_properties_num = 1,
+	.expected_properties = setprop_scanmode_none_props,
+	.expected_adapter_status = BT_STATUS_SUCCESS,
 };
 
 static const struct generic_data bluetooth_discovery_start_success_test = {
@@ -805,14 +1338,14 @@ static const struct generic_data bluetooth_discovery_start_success_test = {
 	.expected_adapter_status = BT_STATUS_SUCCESS,
 };
 
-static const struct generic_data bluetooth_discovery_start_done_test = {
+static const struct generic_data bluetooth_discovery_start_success2_test = {
 	.expected_hal_cb.discovery_state_changed_cb = discovery_start_done_cb,
 	.expected_cb_count = 1,
-	.expected_adapter_status = BT_STATUS_DONE,
+	.expected_adapter_status = BT_STATUS_SUCCESS,
 };
 
-static const struct generic_data bluetooth_discovery_stop_done_test = {
-	.expected_adapter_status = BT_STATUS_DONE,
+static const struct generic_data bluetooth_discovery_stop_success2_test = {
+	.expected_adapter_status = BT_STATUS_SUCCESS,
 };
 
 static const struct generic_data bluetooth_discovery_stop_success_test = {
@@ -829,11 +1362,584 @@ static const struct generic_data bluetooth_discovery_device_found_test = {
 	.expected_adapter_status = BT_STATUS_NOT_EXPECTED,
 };
 
+static char remote_get_properties_bdname_val[] = "00:AA:01:01:00:00";
+static uint32_t remote_get_properties_cod_val = 0;
+static bt_device_type_t remote_get_properties_tod_val = BT_DEVICE_DEVTYPE_BREDR;
+static int32_t remote_get_properties_rssi_val = -60;
+
+static struct priority_property remote_getprops_props[] = {
+	{
+	.prop.type = BT_PROPERTY_BDNAME,
+	.prop.val = &remote_get_properties_bdname_val,
+	.prop.len = sizeof(remote_get_properties_bdname_val) - 1,
+	.prio = 1,
+	},
+	{
+	.prop.type = BT_PROPERTY_UUIDS,
+	.prop.val = NULL,
+	.prop.len = 0,
+	.prio = 2,
+	},
+	{
+	.prop.type = BT_PROPERTY_CLASS_OF_DEVICE,
+	.prop.val = &remote_get_properties_cod_val,
+	.prop.len = sizeof(remote_get_properties_cod_val),
+	.prio = 3,
+	},
+	{
+	.prop.type = BT_PROPERTY_TYPE_OF_DEVICE,
+	.prop.val = &remote_get_properties_tod_val,
+	.prop.len = sizeof(remote_get_properties_tod_val),
+	.prio = 4,
+	},
+	{
+	.prop.type = BT_PROPERTY_REMOTE_RSSI,
+	.prop.val = &remote_get_properties_rssi_val,
+	.prop.len = sizeof(remote_get_properties_rssi_val),
+	.prio = 5,
+	},
+	{
+	.prop.type = BT_PROPERTY_REMOTE_DEVICE_TIMESTAMP,
+	.prop.val = NULL,
+	.prop.len = 4,
+	.prio = 6,
+	},
+};
+
+static const struct generic_data bt_dev_getprops_success_test = {
+	.expected_hal_cb.discovery_state_changed_cb =
+					remote_discovery_state_changed_cb,
+	.expected_hal_cb.device_found_cb = remote_getprops_device_found_cb,
+	.expected_hal_cb.remote_device_properties_cb =
+					remote_test_device_properties_cb,
+	.expected_cb_count = 3,
+	.expected_properties_num = 6,
+	.expected_properties = remote_getprops_props,
+	.expected_adapter_status = BT_STATUS_NOT_EXPECTED,
+};
+
+static char remote_getprop_bdname_val[] = "00:AA:01:01:00:00";
+
+static struct priority_property remote_getprop_bdname_props[] = {
+	{
+	.prop.type = BT_PROPERTY_BDNAME,
+	.prop.val = &remote_getprop_bdname_val,
+	.prop.len = sizeof(remote_getprop_bdname_val) - 1,
+	},
+};
+
+static const struct generic_data bt_dev_getprop_bdname_success_test = {
+	.expected_hal_cb.discovery_state_changed_cb =
+					remote_discovery_state_changed_cb,
+	.expected_hal_cb.device_found_cb = remote_get_property_device_found_cb,
+	.expected_hal_cb.remote_device_properties_cb =
+					remote_test_device_properties_cb,
+	.expected_cb_count = 3,
+	.expected_properties_num = 1,
+	.expected_properties = remote_getprop_bdname_props,
+	.expected_adapter_status = BT_STATUS_SUCCESS,
+};
+
+static struct priority_property remote_getprop_uuids_props[] = {
+	{
+	.prop.type = BT_PROPERTY_UUIDS,
+	.prop.val = NULL,
+	.prop.len = 0,
+	},
+};
+
+static const struct generic_data bt_dev_getprop_uuids_success_test = {
+	.expected_hal_cb.discovery_state_changed_cb =
+					remote_discovery_state_changed_cb,
+	.expected_hal_cb.device_found_cb = remote_get_property_device_found_cb,
+	.expected_hal_cb.remote_device_properties_cb =
+					remote_test_device_properties_cb,
+	.expected_cb_count = 3,
+	.expected_properties_num = 1,
+	.expected_properties = remote_getprop_uuids_props,
+	.expected_adapter_status = BT_STATUS_SUCCESS,
+};
+
+static uint32_t remote_getprop_cod_val = 0;
+
+static struct priority_property remote_getprop_cod_props[] = {
+	{
+	.prop.type = BT_PROPERTY_CLASS_OF_DEVICE,
+	.prop.val = &remote_getprop_cod_val,
+	.prop.len = sizeof(remote_getprop_cod_val),
+	},
+};
+
+static const struct generic_data bt_dev_getprop_cod_success_test = {
+	.expected_hal_cb.discovery_state_changed_cb =
+					remote_discovery_state_changed_cb,
+	.expected_hal_cb.device_found_cb = remote_get_property_device_found_cb,
+	.expected_hal_cb.remote_device_properties_cb =
+					remote_test_device_properties_cb,
+	.expected_cb_count = 3,
+	.expected_properties_num = 1,
+	.expected_properties = remote_getprop_cod_props,
+	.expected_adapter_status = BT_STATUS_SUCCESS,
+};
+
+static bt_device_type_t remote_getprop_tod_val = BT_DEVICE_DEVTYPE_BREDR;
+
+static struct priority_property remote_getprop_tod_props[] = {
+	{
+	.prop.type = BT_PROPERTY_TYPE_OF_DEVICE,
+	.prop.val = &remote_getprop_tod_val,
+	.prop.len = sizeof(remote_getprop_tod_val),
+	},
+};
+
+static const struct generic_data bt_dev_getprop_tod_success_test = {
+	.expected_hal_cb.discovery_state_changed_cb =
+					remote_discovery_state_changed_cb,
+	.expected_hal_cb.device_found_cb = remote_get_property_device_found_cb,
+	.expected_hal_cb.remote_device_properties_cb =
+					remote_test_device_properties_cb,
+	.expected_cb_count = 3,
+	.expected_properties_num = 1,
+	.expected_properties = remote_getprop_tod_props,
+	.expected_adapter_status = BT_STATUS_SUCCESS,
+};
+
+static int32_t remote_getprop_rssi_val = -60;
+
+static struct priority_property remote_getprop_rssi_props[] = {
+	{
+	.prop.type = BT_PROPERTY_REMOTE_RSSI,
+	.prop.val = &remote_getprop_rssi_val,
+	.prop.len = sizeof(remote_getprop_rssi_val),
+	},
+};
+
+static const struct generic_data bt_dev_getprop_rssi_success_test = {
+	.expected_hal_cb.discovery_state_changed_cb =
+					remote_discovery_state_changed_cb,
+	.expected_hal_cb.device_found_cb = remote_get_property_device_found_cb,
+	.expected_hal_cb.remote_device_properties_cb =
+					remote_test_device_properties_cb,
+	.expected_cb_count = 3,
+	.expected_properties_num = 1,
+	.expected_properties = remote_getprop_rssi_props,
+	.expected_adapter_status = BT_STATUS_SUCCESS,
+};
+
+static struct priority_property remote_getprop_timestamp_props[] = {
+	{
+	.prop.type = BT_PROPERTY_REMOTE_DEVICE_TIMESTAMP,
+	.prop.val = NULL,
+	.prop.len = 4,
+	},
+};
+
+static const struct generic_data bt_dev_getprop_timpestamp_success_test = {
+	.expected_hal_cb.discovery_state_changed_cb =
+					remote_discovery_state_changed_cb,
+	.expected_hal_cb.device_found_cb = remote_get_property_device_found_cb,
+	.expected_hal_cb.remote_device_properties_cb =
+					remote_test_device_properties_cb,
+	.expected_cb_count = 3,
+	.expected_properties_num = 1,
+	.expected_properties = remote_getprop_timestamp_props,
+	.expected_adapter_status = BT_STATUS_SUCCESS,
+};
+
+static bt_bdaddr_t remote_getprop_bdaddr_val = {
+	.address = { 0x00, 0xaa, 0x01, 0x00, 0x00, 0x00 }
+};
+
+static struct priority_property remote_getprop_bdaddr_props[] = {
+	{
+	.prop.type = BT_PROPERTY_BDADDR,
+	.prop.val = &remote_getprop_bdaddr_val,
+	.prop.len = sizeof(remote_getprop_bdaddr_val),
+	},
+};
+
+static const struct generic_data bt_dev_getprop_bdaddr_fail_test = {
+	.expected_hal_cb.discovery_state_changed_cb =
+					remote_discovery_state_changed_cb,
+	.expected_hal_cb.device_found_cb = remote_get_property_device_found_cb,
+	.expected_hal_cb.remote_device_properties_cb =
+					remote_test_device_properties_cb,
+	.expected_cb_count = 3,
+	.expected_properties = remote_getprop_bdaddr_props,
+	.expected_adapter_status = BT_STATUS_FAIL,
+};
+
+static bt_service_record_t remote_getprop_servrec_val = {
+	.uuid = { {0x00} },
+	.channel = 12,
+	.name = "bt_name",
+};
+
+static struct priority_property remote_getprop_servrec_props[] = {
+	{
+	.prop.type = BT_PROPERTY_SERVICE_RECORD,
+	.prop.val = &remote_getprop_servrec_val,
+	.prop.len = sizeof(remote_getprop_servrec_val),
+	},
+};
+
+static const struct generic_data bt_dev_getprop_servrec_fail_test = {
+	.expected_hal_cb.discovery_state_changed_cb =
+					remote_discovery_state_changed_cb,
+	.expected_hal_cb.device_found_cb = remote_get_property_device_found_cb,
+	.expected_hal_cb.remote_device_properties_cb =
+					remote_test_device_properties_cb,
+	.expected_cb_count = 3,
+	.expected_properties = remote_getprop_servrec_props,
+	.expected_adapter_status = BT_STATUS_FAIL,
+};
+
+static bt_scan_mode_t remote_getprop_scanmode_val = BT_SCAN_MODE_CONNECTABLE;
+
+static struct priority_property remote_getprop_scanmode_props[] = {
+	{
+	.prop.type = BT_PROPERTY_ADAPTER_SCAN_MODE,
+	.prop.val = &remote_getprop_scanmode_val,
+	.prop.len = sizeof(remote_getprop_scanmode_val),
+	},
+};
+
+static const struct generic_data bt_dev_getprop_scanmode_fail_test = {
+	.expected_hal_cb.discovery_state_changed_cb =
+					remote_discovery_state_changed_cb,
+	.expected_hal_cb.device_found_cb = remote_get_property_device_found_cb,
+	.expected_hal_cb.remote_device_properties_cb =
+					remote_test_device_properties_cb,
+	.expected_cb_count = 3,
+	.expected_properties = remote_getprop_scanmode_props,
+	.expected_adapter_status = BT_STATUS_FAIL,
+};
+
+static struct priority_property remote_getprop_bondeddev_props[] = {
+	{
+	.prop.type = BT_PROPERTY_ADAPTER_BONDED_DEVICES,
+	.prop.val = NULL,
+	.prop.len = 0,
+	},
+};
+
+static const struct generic_data bt_dev_getprop_bondeddev_fail_test = {
+	.expected_hal_cb.discovery_state_changed_cb =
+					remote_discovery_state_changed_cb,
+	.expected_hal_cb.device_found_cb = remote_get_property_device_found_cb,
+	.expected_hal_cb.remote_device_properties_cb =
+					remote_test_device_properties_cb,
+	.expected_cb_count = 3,
+	.expected_properties = remote_getprop_bondeddev_props,
+	.expected_adapter_status = BT_STATUS_FAIL,
+};
+
+static uint32_t remote_getprop_disctimeout_val = 120;
+
+static struct priority_property remote_getprop_disctimeout_props[] = {
+	{
+	.prop.type = BT_PROPERTY_ADAPTER_DISCOVERY_TIMEOUT,
+	.prop.val = &remote_getprop_disctimeout_val,
+	.prop.len = sizeof(remote_getprop_disctimeout_val),
+	},
+};
+
+static const struct generic_data bt_dev_getprop_disctimeout_fail_test = {
+	.expected_hal_cb.discovery_state_changed_cb =
+					remote_discovery_state_changed_cb,
+	.expected_hal_cb.device_found_cb = remote_get_property_device_found_cb,
+	.expected_hal_cb.remote_device_properties_cb =
+					remote_test_device_properties_cb,
+	.expected_cb_count = 3,
+	.expected_properties = remote_getprop_disctimeout_props,
+	.expected_adapter_status = BT_STATUS_FAIL,
+};
+
+static struct priority_property remote_getprop_verinfo_props[] = {
+	{
+	.prop.type = BT_PROPERTY_REMOTE_VERSION_INFO,
+	.prop.val = NULL,
+	.prop.len = 0,
+	},
+};
+
+static const struct generic_data bt_dev_getprop_verinfo_fail_test = {
+	.expected_hal_cb.discovery_state_changed_cb =
+					remote_discovery_state_changed_cb,
+	.expected_hal_cb.device_found_cb = remote_get_property_device_found_cb,
+	.expected_hal_cb.remote_device_properties_cb =
+					remote_test_device_properties_cb,
+	.expected_cb_count = 3,
+	.expected_properties = remote_getprop_verinfo_props,
+	.expected_adapter_status = BT_STATUS_FAIL,
+};
+
+static struct priority_property remote_getprop_fname_props[] = {
+	{
+	.prop.type = BT_PROPERTY_REMOTE_VERSION_INFO,
+	.prop.val = NULL,
+	.prop.len = 0,
+	},
+};
+
+static const struct generic_data bt_dev_getprop_fname_fail_test = {
+	.expected_hal_cb.discovery_state_changed_cb =
+					remote_discovery_state_changed_cb,
+	.expected_hal_cb.device_found_cb = remote_get_property_device_found_cb,
+	.expected_hal_cb.remote_device_properties_cb =
+					remote_test_device_properties_cb,
+	.expected_cb_count = 3,
+	.expected_properties = remote_getprop_fname_props,
+	.expected_adapter_status = BT_STATUS_FAIL,
+};
+
+static char remote_setprop_fname_val[] = "set_fname_test";
+
+static struct priority_property remote_setprop_fname_props[] = {
+	{
+	.prop.type = BT_PROPERTY_REMOTE_FRIENDLY_NAME,
+	.prop.val = &remote_setprop_fname_val,
+	.prop.len = sizeof(remote_setprop_fname_val) - 1,
+	},
+	{
+	.prop.type = BT_PROPERTY_REMOTE_FRIENDLY_NAME,
+	.prop.val = &remote_setprop_fname_val,
+	.prop.len = sizeof(remote_setprop_fname_val) - 1,
+	},
+};
+
+static const struct generic_data bt_dev_setprop_fname_success_test = {
+	.expected_hal_cb.discovery_state_changed_cb =
+					remote_setprop_disc_state_changed_cb,
+	.expected_hal_cb.device_found_cb = remote_setprop_device_found_cb,
+	.expected_hal_cb.remote_device_properties_cb =
+					remote_setprop_device_properties_cb,
+	.expected_cb_count = 4,
+	.expected_properties_num = 2,
+	.expected_properties = remote_setprop_fname_props,
+	.expected_adapter_status = BT_STATUS_SUCCESS,
+};
+
+static char remote_setprop_bdname_val[] = "setprop_bdname_fail";
+
+static struct priority_property remote_setprop_bdname_props[] = {
+	{
+	.prop.type = BT_PROPERTY_BDNAME,
+	.prop.val = &remote_setprop_bdname_val,
+	.prop.len = sizeof(remote_setprop_bdname_val) - 1,
+	},
+};
+
+static const struct generic_data bt_dev_setprop_bdname_fail_test = {
+	.expected_hal_cb.discovery_state_changed_cb =
+					remote_discovery_state_changed_cb,
+	.expected_hal_cb.device_found_cb = remote_setprop_fail_device_found_cb,
+	.expected_cb_count = 3,
+	.expected_properties = remote_setprop_bdname_props,
+	.expected_adapter_status = BT_STATUS_FAIL,
+};
+
+static struct priority_property remote_setprop_uuids_props[] = {
+	{
+	.prop.type = BT_PROPERTY_UUIDS,
+	.prop.val = NULL,
+	.prop.len = 0,
+	},
+};
+
+static const struct generic_data bt_dev_setprop_uuids_fail_test  = {
+	.expected_hal_cb.discovery_state_changed_cb =
+					remote_discovery_state_changed_cb,
+	.expected_hal_cb.device_found_cb = remote_setprop_fail_device_found_cb,
+	.expected_cb_count = 3,
+	.expected_properties = remote_setprop_uuids_props,
+	.expected_adapter_status = BT_STATUS_FAIL,
+};
+
+static uint32_t remote_setprop_cod_val = 0;
+
+static struct priority_property remote_setprop_cod_props[] = {
+	{
+	.prop.type = BT_PROPERTY_CLASS_OF_DEVICE,
+	.prop.val = &remote_setprop_cod_val,
+	.prop.len = sizeof(remote_setprop_cod_val),
+	},
+};
+
+static const struct generic_data bt_dev_setprop_cod_fail_test = {
+	.expected_hal_cb.discovery_state_changed_cb =
+					remote_discovery_state_changed_cb,
+	.expected_hal_cb.device_found_cb = remote_setprop_fail_device_found_cb,
+	.expected_cb_count = 3,
+	.expected_properties = remote_setprop_cod_props,
+	.expected_adapter_status = BT_STATUS_FAIL,
+};
+
+static bt_device_type_t remote_setprop_tod_val = BT_DEVICE_DEVTYPE_BREDR;
+
+static struct priority_property remote_setprop_tod_props[] = {
+	{
+	.prop.type = BT_PROPERTY_TYPE_OF_DEVICE,
+	.prop.val = &remote_setprop_tod_val,
+	.prop.len = sizeof(remote_setprop_tod_val),
+	},
+};
+
+static const struct generic_data bt_dev_setprop_tod_fail_test = {
+	.expected_hal_cb.discovery_state_changed_cb =
+					remote_discovery_state_changed_cb,
+	.expected_hal_cb.device_found_cb = remote_setprop_fail_device_found_cb,
+	.expected_cb_count = 3,
+	.expected_properties = remote_setprop_tod_props,
+	.expected_adapter_status = BT_STATUS_FAIL,
+};
+
+static int32_t remote_setprop_rssi_val = -60;
+
+static struct priority_property remote_setprop_rssi_props[] = {
+	{
+	.prop.type = BT_PROPERTY_REMOTE_RSSI,
+	.prop.val = &remote_setprop_rssi_val,
+	.prop.len = sizeof(remote_setprop_rssi_val),
+	},
+};
+
+static const struct generic_data bt_dev_setprop_rssi_fail_test = {
+	.expected_hal_cb.discovery_state_changed_cb =
+					remote_discovery_state_changed_cb,
+	.expected_hal_cb.device_found_cb = remote_setprop_fail_device_found_cb,
+	.expected_cb_count = 3,
+	.expected_properties = remote_setprop_rssi_props,
+	.expected_adapter_status = BT_STATUS_FAIL,
+};
+
+static int32_t remote_setprop_timestamp_val = 0xAB;
+
+static struct priority_property remote_setprop_timestamp_props[] = {
+	{
+	.prop.type = BT_PROPERTY_REMOTE_DEVICE_TIMESTAMP,
+	.prop.val = (&remote_setprop_timestamp_val),
+	.prop.len = sizeof(remote_setprop_timestamp_val),
+	},
+};
+
+static const struct generic_data bt_dev_setprop_timpestamp_fail_test = {
+	.expected_hal_cb.discovery_state_changed_cb =
+					remote_discovery_state_changed_cb,
+	.expected_hal_cb.device_found_cb = remote_setprop_fail_device_found_cb,
+	.expected_cb_count = 3,
+	.expected_properties = remote_setprop_timestamp_props,
+	.expected_adapter_status = BT_STATUS_FAIL,
+};
+
+static bt_bdaddr_t remote_setprop_bdaddr_val = {
+	.address = { 0x00, 0xaa, 0x01, 0x00, 0x00, 0x00 }
+};
+
+static struct priority_property remote_setprop_bdaddr_props[] = {
+	{
+	.prop.type = BT_PROPERTY_BDADDR,
+	.prop.val = &remote_setprop_bdaddr_val,
+	.prop.len = sizeof(remote_setprop_bdaddr_val),
+	},
+};
+
+static const struct generic_data bt_dev_setprop_bdaddr_fail_test = {
+	.expected_hal_cb.discovery_state_changed_cb =
+					remote_discovery_state_changed_cb,
+	.expected_hal_cb.device_found_cb = remote_setprop_fail_device_found_cb,
+	.expected_cb_count = 3,
+	.expected_properties = remote_setprop_bdaddr_props,
+	.expected_adapter_status = BT_STATUS_FAIL,
+};
+
+static bt_service_record_t remote_setprop_servrec_val = {
+	.uuid = { {0x00} },
+	.channel = 12,
+	.name = "bt_name",
+};
+
+static struct priority_property remote_setprop_servrec_props[] = {
+	{
+	.prop.type = BT_PROPERTY_SERVICE_RECORD,
+	.prop.val = &remote_setprop_servrec_val,
+	.prop.len = sizeof(remote_setprop_servrec_val),
+	},
+};
+
+static const struct generic_data bt_dev_setprop_servrec_fail_test = {
+	.expected_hal_cb.discovery_state_changed_cb =
+					remote_discovery_state_changed_cb,
+	.expected_hal_cb.device_found_cb = remote_setprop_fail_device_found_cb,
+	.expected_cb_count = 3,
+	.expected_properties = remote_setprop_servrec_props,
+	.expected_adapter_status = BT_STATUS_FAIL,
+};
+
+static bt_scan_mode_t remote_setprop_scanmode_val = BT_SCAN_MODE_CONNECTABLE;
+
+static struct priority_property remote_setprop_scanmode_props[] = {
+	{
+	.prop.type = BT_PROPERTY_ADAPTER_SCAN_MODE,
+	.prop.val = &remote_setprop_scanmode_val,
+	.prop.len = sizeof(remote_setprop_scanmode_val),
+	},
+};
+
+static const struct generic_data bt_dev_setprop_scanmode_fail_test = {
+	.expected_hal_cb.discovery_state_changed_cb =
+					remote_discovery_state_changed_cb,
+	.expected_hal_cb.device_found_cb = remote_setprop_fail_device_found_cb,
+	.expected_cb_count = 3,
+	.expected_properties = remote_setprop_scanmode_props,
+	.expected_adapter_status = BT_STATUS_FAIL,
+};
+
+static bt_bdaddr_t remote_setprop_bondeddev_val = {
+	.address = { 0x00, 0xaa, 0x01, 0x00, 0x00, 0x00 }
+};
+
+static struct priority_property remote_setprop_bondeddev_props[] = {
+	{
+	.prop.type = BT_PROPERTY_ADAPTER_BONDED_DEVICES,
+	.prop.val = &remote_setprop_bondeddev_val,
+	.prop.len = sizeof(remote_setprop_bondeddev_val),
+	},
+};
+
+static const struct generic_data bt_dev_setprop_bondeddev_fail_test = {
+	.expected_hal_cb.discovery_state_changed_cb =
+					remote_discovery_state_changed_cb,
+	.expected_hal_cb.device_found_cb = remote_setprop_fail_device_found_cb,
+	.expected_cb_count = 3,
+	.expected_properties = remote_setprop_bondeddev_props,
+	.expected_adapter_status = BT_STATUS_FAIL,
+};
+
+static uint32_t remote_setprop_disctimeout_val = 120;
+
+static struct priority_property remote_setprop_disctimeout_props[] = {
+	{
+	.prop.type = BT_PROPERTY_ADAPTER_DISCOVERY_TIMEOUT,
+	.prop.val = &remote_setprop_disctimeout_val,
+	.prop.len = sizeof(remote_setprop_disctimeout_val),
+	},
+};
+
+static const struct generic_data bt_dev_setprop_disctimeout_fail_test = {
+	.expected_hal_cb.discovery_state_changed_cb =
+					remote_discovery_state_changed_cb,
+	.expected_hal_cb.device_found_cb = remote_setprop_fail_device_found_cb,
+	.expected_cb_count = 3,
+	.expected_properties = remote_setprop_disctimeout_props,
+	.expected_adapter_status = BT_STATUS_FAIL,
+};
+
 static bt_callbacks_t bt_callbacks = {
 	.size = sizeof(bt_callbacks),
 	.adapter_state_changed_cb = adapter_state_changed_cb,
 	.adapter_properties_cb = adapter_properties_cb,
-	.remote_device_properties_cb = NULL,
+	.remote_device_properties_cb = remote_device_properties_cb,
 	.device_found_cb = device_found_cb,
 	.discovery_state_changed_cb = discovery_state_changed_cb,
 	.pin_request_cb = NULL,
@@ -844,6 +1950,7 @@ static bt_callbacks_t bt_callbacks = {
 	.dut_mode_recv_cb = NULL,
 	.le_test_mode_cb = NULL
 };
+
 
 static void setup(struct test_data *data)
 {
@@ -939,7 +2046,9 @@ static void setup_enabled_adapter(const void *test_data)
 	if (status != BT_STATUS_SUCCESS) {
 		data->if_bluetooth = NULL;
 		tester_setup_failed();
+		return;
 	}
+
 	status = data->if_bluetooth->enable();
 	if (status != BT_STATUS_SUCCESS)
 		tester_setup_failed();
@@ -949,10 +2058,18 @@ static void teardown(const void *test_data)
 {
 	struct test_data *data = tester_get_data();
 
+	if (data->if_hid) {
+		data->if_hid->cleanup();
+		data->if_hid = NULL;
+	}
+
 	if (data->if_bluetooth) {
 		data->if_bluetooth->cleanup();
 		data->if_bluetooth = NULL;
 	}
+
+	if (data->expected_properties_list)
+		g_slist_free(data->expected_properties_list);
 
 	data->device->close(data->device);
 
@@ -972,7 +2089,11 @@ static void test_enable(const void *test_data)
 	struct test_data *data = tester_get_data();
 	bt_status_t adapter_status;
 
+	uint8_t *bdaddr = (uint8_t *)hciemu_get_master_bdaddr(data->hciemu);
+
 	init_test_conditions(data);
+
+	bdaddr2android((const bdaddr_t *)bdaddr, &enable_done_bdaddr_val.address);
 
 	adapter_status = data->if_bluetooth->enable();
 	check_expected_status(adapter_status);
@@ -983,7 +2104,11 @@ static void test_enable_done(const void *test_data)
 	struct test_data *data = tester_get_data();
 	bt_status_t adapter_status;
 
+	uint8_t *bdaddr = (uint8_t *)hciemu_get_master_bdaddr(data->hciemu);
+
 	init_test_conditions(data);
+
+	bdaddr2android((const bdaddr_t *)bdaddr, &enable_done_bdaddr_val.address);
 
 	adapter_status = data->if_bluetooth->enable();
 	check_expected_status(adapter_status);
@@ -1003,22 +2128,19 @@ static void test_disable(const void *test_data)
 static void test_setprop_bdname_success(const void *test_data)
 {
 	struct test_data *data = tester_get_data();
-	const struct generic_data *test = data->test_data;
-	const bt_property_t *prop = &test->expected_property;
+	const bt_property_t *prop = &(setprop_bdname_props[0].prop);
 	bt_status_t adapter_status;
 
 	init_test_conditions(data);
 
 	adapter_status = data->if_bluetooth->set_adapter_property(prop);
-
 	check_expected_status(adapter_status);
 }
 
 static void test_setprop_scanmode_succes(const void *test_data)
 {
 	struct test_data *data = tester_get_data();
-	const struct generic_data *test = data->test_data;
-	const bt_property_t *prop = &test->expected_property;
+	const bt_property_t *prop = &(setprop_scanmode_props[0].prop);
 	bt_status_t adapter_status;
 
 	init_test_conditions(data);
@@ -1030,8 +2152,7 @@ static void test_setprop_scanmode_succes(const void *test_data)
 static void test_setprop_disctimeout_succes(const void *test_data)
 {
 	struct test_data *data = tester_get_data();
-	const struct generic_data *test = data->test_data;
-	const bt_property_t *prop = &test->expected_property;
+	const bt_property_t *prop = &(setprop_disctimeout_props[0].prop);
 	bt_status_t adapter_status;
 
 	init_test_conditions(data);
@@ -1043,11 +2164,13 @@ static void test_setprop_disctimeout_succes(const void *test_data)
 static void test_getprop_bdaddr_success(const void *test_data)
 {
 	struct test_data *data = tester_get_data();
-	const struct generic_data *test = data->test_data;
-	const bt_property_t prop = test->expected_property;
+	const bt_property_t prop = setprop_bdaddr_props[0].prop;
 	bt_status_t adapter_status;
+	uint8_t *bdaddr = (uint8_t *)hciemu_get_master_bdaddr(data->hciemu);
 
 	init_test_conditions(data);
+
+	bdaddr2android((const bdaddr_t *)bdaddr, &test_getprop_bdaddr_val.address);
 
 	adapter_status = data->if_bluetooth->get_adapter_property(prop.type);
 	check_expected_status(adapter_status);
@@ -1056,24 +2179,20 @@ static void test_getprop_bdaddr_success(const void *test_data)
 static void test_getprop_bdname_success(const void *test_data)
 {
 	struct test_data *data = tester_get_data();
-	const struct generic_data *test = data->test_data;
-	const bt_property_t *prop = &test->expected_property;
+	const bt_property_t *prop = &(getprop_bdname_props[0].prop);
 	bt_status_t adapter_status;
 
 	init_test_conditions(data);
 
 	adapter_status = data->if_bluetooth->set_adapter_property(prop);
-	check_expected_status(adapter_status);
 
 	adapter_status = data->if_bluetooth->get_adapter_property((*prop).type);
 	check_expected_status(adapter_status);
 }
-
 static void test_setprop_uuid_invalid(const void *test_data)
 {
 	struct test_data *data = tester_get_data();
-	const struct generic_data *test = data->test_data;
-	const bt_property_t *prop = &test->expected_property;
+	const bt_property_t *prop = &(setprop_uuid_prop[0].prop);
 	bt_status_t adapter_status;
 
 	init_test_conditions(data);
@@ -1085,8 +2204,7 @@ static void test_setprop_uuid_invalid(const void *test_data)
 static void test_setprop_cod_invalid(const void *test_data)
 {
 	struct test_data *data = tester_get_data();
-	const struct generic_data *test = data->test_data;
-	const bt_property_t *prop = &test->expected_property;
+	const bt_property_t *prop = &(setprop_cod_props[0].prop);
 	bt_status_t adapter_status;
 
 	init_test_conditions(data);
@@ -1111,8 +2229,7 @@ static void test_setprop_tod_invalid(const void *test_data)
 static void test_setprop_rssi_invalid(const void *test_data)
 {
 	struct test_data *data = tester_get_data();
-	const struct generic_data *test = data->test_data;
-	const bt_property_t *prop = &test->expected_property;
+	const bt_property_t *prop = &(setprop_remote_rssi_props[0].prop);
 	bt_status_t adapter_status;
 
 	init_test_conditions(data);
@@ -1124,8 +2241,128 @@ static void test_setprop_rssi_invalid(const void *test_data)
 static void test_setprop_service_record_invalid(const void *test_data)
 {
 	struct test_data *data = tester_get_data();
-	const struct generic_data *test = data->test_data;
-	const bt_property_t *prop = &test->expected_property;
+	const bt_property_t *prop = &(setprop_service_record_props[0].prop);
+	bt_status_t adapter_status;
+
+	init_test_conditions(data);
+
+	adapter_status = data->if_bluetooth->set_adapter_property(prop);
+	check_expected_status(adapter_status);
+}
+
+static void test_setprop_bdaddr_invalid(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+	const bt_property_t *prop = &(setprop_bdaddr_props[0].prop);
+	bt_status_t adapter_status;
+
+	init_test_conditions(data);
+
+	adapter_status = data->if_bluetooth->set_adapter_property(prop);
+	check_expected_status(adapter_status);
+}
+
+static void test_setprop_scanmode_connectable_success(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+	const bt_property_t *prop =
+				&(setprop_scanmode_connectable_props[0].prop);
+	bt_status_t adapter_status;
+
+	init_test_conditions(data);
+
+	adapter_status = data->if_bluetooth->set_adapter_property(prop);
+	check_expected_status(adapter_status);
+}
+
+static void test_setprop_bonded_devices_invalid(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+	const bt_property_t *prop = &(setprop_bonded_devices_props[0].prop);
+	bt_status_t adapter_status;
+
+	init_test_conditions(data);
+
+	adapter_status = data->if_bluetooth->set_adapter_property(prop);
+	check_expected_status(adapter_status);
+}
+
+static void test_getprop_cod_success(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+	const bt_property_t prop = setprop_cod_props[0].prop;
+	bt_status_t adapter_status;
+
+	init_test_conditions(data);
+
+	adapter_status = data->if_bluetooth->get_adapter_property(prop.type);
+	check_expected_status(adapter_status);
+}
+
+static void test_getprop_tod_success(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+	const bt_property_t prop = setprop_tod_props[0].prop;
+	bt_status_t adapter_status;
+
+	init_test_conditions(data);
+
+	adapter_status = data->if_bluetooth->get_adapter_property(prop.type);
+	check_expected_status(adapter_status);
+}
+
+static void test_getprop_scanmode_success(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+	const bt_property_t prop = setprop_scanmode_props[0].prop;
+	bt_status_t adapter_status;
+
+	init_test_conditions(data);
+
+	adapter_status = data->if_bluetooth->get_adapter_property(prop.type);
+	check_expected_status(adapter_status);
+}
+
+static void test_getprop_disctimeout_success(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+	const bt_property_t prop = setprop_disctimeout_props[0].prop;
+	bt_status_t adapter_status;
+
+	init_test_conditions(data);
+
+	adapter_status = data->if_bluetooth->get_adapter_property(prop.type);
+	check_expected_status(adapter_status);
+}
+
+static void test_getprop_uuids_success(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+	const bt_property_t prop = getprop_uuids_props[0].prop;
+	bt_status_t adapter_status;
+
+	init_test_conditions(data);
+
+	adapter_status = data->if_bluetooth->get_adapter_property(prop.type);
+	check_expected_status(adapter_status);
+}
+
+static void test_getprop_bondeddev_success(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+	const bt_property_t prop = getprop_bondeddev_props[0].prop;
+	bt_status_t adapter_status;
+
+	init_test_conditions(data);
+
+	adapter_status = data->if_bluetooth->get_adapter_property(prop.type);
+	check_expected_status(adapter_status);
+}
+
+static void test_setprop_scanmode_none_done(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+	const bt_property_t *prop = &(setprop_scanmode_none_props[0].prop);
 	bt_status_t adapter_status;
 
 	init_test_conditions(data);
@@ -1202,6 +2439,239 @@ static void test_discovery_device_found(const void *test_data)
 	data->if_bluetooth->start_discovery();
 }
 
+static void test_dev_getprops_success(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+
+	init_test_conditions(data);
+
+	data->if_bluetooth->start_discovery();
+}
+
+static void test_dev_getprop_bdname_success(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+
+	init_test_conditions(data);
+
+	data->if_bluetooth->start_discovery();
+}
+
+static void test_dev_getprop_uuids_success(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+
+	init_test_conditions(data);
+
+	data->if_bluetooth->start_discovery();
+}
+
+static void test_dev_getprop_cod_success(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+
+	init_test_conditions(data);
+
+	data->if_bluetooth->start_discovery();
+}
+
+static void test_dev_getprop_tod_success(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+
+	init_test_conditions(data);
+
+	data->if_bluetooth->start_discovery();
+}
+
+static void test_dev_getprop_rssi_success(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+
+	init_test_conditions(data);
+
+	data->if_bluetooth->start_discovery();
+}
+
+static void test_dev_getprop_timestamp_success(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+
+	init_test_conditions(data);
+
+	data->if_bluetooth->start_discovery();
+}
+
+static void test_dev_getprop_bdaddr_fail(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+
+	init_test_conditions(data);
+
+	data->if_bluetooth->start_discovery();
+}
+
+static void test_dev_getprop_servrec_fail(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+
+	init_test_conditions(data);
+
+	data->if_bluetooth->start_discovery();
+}
+
+static void test_dev_getprop_scanmode_fail(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+
+	init_test_conditions(data);
+
+	data->if_bluetooth->start_discovery();
+}
+
+static void test_dev_getprop_bondeddev_fail(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+
+	init_test_conditions(data);
+
+	data->if_bluetooth->start_discovery();
+}
+
+static void test_dev_getprop_disctimeout_fail(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+
+	init_test_conditions(data);
+
+	data->if_bluetooth->start_discovery();
+}
+
+static void test_dev_getprop_verinfo_fail(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+
+	init_test_conditions(data);
+
+	data->if_bluetooth->start_discovery();
+}
+
+static void test_dev_getprop_fname_fail(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+
+	init_test_conditions(data);
+
+	data->if_bluetooth->start_discovery();
+}
+
+static void test_dev_setprop_fname_success(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+
+	init_test_conditions(data);
+
+	data->if_bluetooth->start_discovery();
+}
+
+static void test_dev_setprop_bdname_fail(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+
+	init_test_conditions(data);
+
+	data->if_bluetooth->start_discovery();
+}
+
+static void test_dev_setprop_uuids_fail(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+
+	init_test_conditions(data);
+
+	data->if_bluetooth->start_discovery();
+}
+
+static void test_dev_setprop_cod_fail(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+
+	init_test_conditions(data);
+
+	data->if_bluetooth->start_discovery();
+}
+
+static void test_dev_setprop_tod_fail(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+
+	init_test_conditions(data);
+
+	data->if_bluetooth->start_discovery();
+}
+
+static void test_dev_setprop_rssi_fail(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+
+	init_test_conditions(data);
+
+	data->if_bluetooth->start_discovery();
+}
+
+static void test_dev_setprop_timestamp_fail(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+
+	init_test_conditions(data);
+
+	data->if_bluetooth->start_discovery();
+}
+
+static void test_dev_setprop_bdaddr_fail(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+
+	init_test_conditions(data);
+
+	data->if_bluetooth->start_discovery();
+}
+
+static void test_dev_setprop_servrec_fail(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+
+	init_test_conditions(data);
+
+	data->if_bluetooth->start_discovery();
+}
+
+static void test_dev_setprop_scanmode_fail(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+
+	init_test_conditions(data);
+
+	data->if_bluetooth->start_discovery();
+}
+
+static void test_dev_setprop_bondeddev_fail(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+
+	init_test_conditions(data);
+
+	data->if_bluetooth->start_discovery();
+}
+
+static void test_dev_setprop_disctimeout_fail(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+
+	init_test_conditions(data);
+
+	data->if_bluetooth->start_discovery();
+}
 /* Test Socket HAL */
 
 static void adapter_socket_state_changed_cb(bt_state_t state)
@@ -1322,6 +2792,7 @@ static void setup_socket_interface(const void *test_data)
 	if (status != BT_STATUS_SUCCESS) {
 		data->if_bluetooth = NULL;
 		tester_setup_failed();
+		return;
 	}
 
 	sock = data->if_bluetooth->get_profile_interface(BT_PROFILE_SOCKETS_ID);
@@ -1347,6 +2818,7 @@ static void setup_socket_interface_enabled(const void *test_data)
 	if (status != BT_STATUS_SUCCESS) {
 		data->if_bluetooth = NULL;
 		tester_setup_failed();
+		return;
 	}
 
 	sock = data->if_bluetooth->get_profile_interface(BT_PROFILE_SOCKETS_ID);
@@ -1613,6 +3085,435 @@ clean:
 		close(sock_fd);
 }
 
+static void hidhost_connection_state_cb(bt_bdaddr_t *bd_addr,
+						bthh_connection_state_t state)
+{
+	struct test_data *data = tester_get_data();
+	const struct hidhost_generic_data *test = data->test_data;
+
+	data->cb_count++;
+
+	if (state == BTHH_CONN_STATE_CONNECTED)
+		tester_setup_complete();
+
+	if (test && test->expected_hal_cb.connection_state_cb)
+		test->expected_hal_cb.connection_state_cb(bd_addr, state);
+}
+
+static void hidhost_virual_unplug_cb(bt_bdaddr_t *bd_addr, bthh_status_t status)
+{
+	struct test_data *data = tester_get_data();
+	const struct hidhost_generic_data *test = data->test_data;
+
+	data->cb_count++;
+
+	if (test && test->expected_hal_cb.virtual_unplug_cb)
+		test->expected_hal_cb.virtual_unplug_cb(bd_addr, status);
+}
+
+static void hidhost_hid_info_cb(bt_bdaddr_t *bd_addr, bthh_hid_info_t hid)
+{
+	struct test_data *data = tester_get_data();
+	const struct hidhost_generic_data *test = data->test_data;
+
+	data->cb_count++;
+
+	if (test && test->expected_hal_cb.hid_info_cb)
+		test->expected_hal_cb.hid_info_cb(bd_addr, hid);
+}
+
+static void hidhost_protocol_mode_cb(bt_bdaddr_t *bd_addr,
+						bthh_status_t status,
+						bthh_protocol_mode_t mode)
+{
+	struct test_data *data = tester_get_data();
+	const struct hidhost_generic_data *test = data->test_data;
+
+	data->cb_count++;
+
+	if (test && test->expected_hal_cb.protocol_mode_cb)
+		test->expected_hal_cb.protocol_mode_cb(bd_addr, status, mode);
+}
+
+static void hidhost_get_report_cb(bt_bdaddr_t *bd_addr, bthh_status_t status,
+						uint8_t *report, int size)
+{
+	struct test_data *data = tester_get_data();
+	const struct hidhost_generic_data *test = data->test_data;
+
+	data->cb_count++;
+
+	if (test && test->expected_hal_cb.get_report_cb)
+		test->expected_hal_cb.get_report_cb(bd_addr, status, report,
+									size);
+}
+
+static bthh_callbacks_t bthh_callbacks = {
+	.size = sizeof(bthh_callbacks),
+	.connection_state_cb = hidhost_connection_state_cb,
+	.hid_info_cb = hidhost_hid_info_cb,
+	.protocol_mode_cb = hidhost_protocol_mode_cb,
+	.idle_time_cb = NULL,
+	.get_report_cb = hidhost_get_report_cb,
+	.virtual_unplug_cb = hidhost_virual_unplug_cb
+};
+
+static void setup_hidhost(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+	bt_status_t status;
+	const void *hid;
+
+	setup(data);
+
+	status = data->if_bluetooth->init(&bt_callbacks);
+	if (status != BT_STATUS_SUCCESS) {
+		data->if_bluetooth = NULL;
+		tester_setup_failed();
+		return;
+	}
+
+	hid = data->if_bluetooth->get_profile_interface(BT_PROFILE_HIDHOST_ID);
+	if (!hid) {
+		tester_setup_failed();
+		return;
+	}
+
+	data->if_hid = hid;
+
+	status = data->if_hid->init(&bthh_callbacks);
+	if (status != BT_STATUS_SUCCESS) {
+		data->if_hid = NULL;
+		tester_setup_failed();
+		return;
+	}
+}
+
+static void setup_hidhost_interface(const void *test_data)
+{
+	setup_hidhost(test_data);
+	tester_setup_complete();
+}
+
+#define HID_GET_REPORT_PROTOCOL		0x60
+#define HID_GET_BOOT_PROTOCOL		0x61
+#define HID_SET_REPORT_PROTOCOL		0x70
+#define HID_SET_BOOT_PROTOCOL		0x71
+
+#define HID_SET_INPUT_REPORT		0x51
+#define HID_SET_OUTPUT_REPORT		0x52
+#define HID_SET_FEATURE_REPORT		0x53
+
+#define HID_SEND_DATA			0xa2
+
+static void hid_prepare_reply_protocol_mode(const void *data, uint16_t len)
+{
+	struct test_data *t_data = tester_get_data();
+	struct bthost *bthost = hciemu_client_get_host(t_data->hciemu);
+	uint8_t pdu[2] = { 0, 0 };
+	uint16_t pdu_len = 0;
+
+	pdu_len = 2;
+	pdu[0] = 0xa0;
+	pdu[1] = 0x00;
+
+	bthost_send_cid(bthost, t_data->ctrl_handle, t_data->ctrl_cid,
+						(void *)pdu, pdu_len);
+}
+
+static void hid_intr_cid_hook_cb(const void *data, uint16_t len,
+							void *user_data)
+{
+	uint8_t header = ((uint8_t *) data)[0];
+
+	switch (header) {
+	case HID_SEND_DATA:
+		tester_test_passed();
+	}
+}
+
+static void hid_intr_connect_cb(uint16_t handle, uint16_t cid, void *user_data)
+{
+	struct test_data *data = tester_get_data();
+	struct bthost *bthost = hciemu_client_get_host(data->hciemu);
+
+	data->intr_handle = handle;
+	data->intr_cid = cid;
+
+	bthost_add_cid_hook(bthost, handle, cid, hid_intr_cid_hook_cb, NULL);
+}
+
+static void hid_ctrl_cid_hook_cb(const void *data, uint16_t len,
+							void *user_data)
+{
+	uint8_t header = ((uint8_t *) data)[0];
+
+	switch (header) {
+	case HID_GET_REPORT_PROTOCOL:
+	case HID_GET_BOOT_PROTOCOL:
+	case HID_SET_REPORT_PROTOCOL:
+	case HID_SET_BOOT_PROTOCOL:
+		hid_prepare_reply_protocol_mode(data, len);
+		break;
+	/* HID device doesnot reply for this commads, so reaching pdu's
+	 * to hid device means assuming test passed */
+	case HID_SET_INPUT_REPORT:
+	case HID_SET_OUTPUT_REPORT:
+	case HID_SET_FEATURE_REPORT:
+	case HID_SEND_DATA:
+		tester_test_passed();
+	}
+}
+
+static void hid_ctrl_connect_cb(uint16_t handle, uint16_t cid, void *user_data)
+{
+	struct test_data *data = tester_get_data();
+	struct bthost *bthost = hciemu_client_get_host(data->hciemu);
+
+	data->ctrl_handle = handle;
+	data->ctrl_cid = cid;
+
+	bthost_add_cid_hook(bthost, handle, cid, hid_ctrl_cid_hook_cb, NULL);
+}
+
+static void hid_sdp_cid_hook_cb(const void *data, uint16_t len, void *user_data)
+{
+	struct test_data *t_data = tester_get_data();
+	struct bthost *bthost = hciemu_client_get_host(t_data->hciemu);
+	uint8_t pdu[] = { 0x07, /* PDU id */
+				0x00, 0x00, /* Transaction id */
+				0x01, 0x71, /* Response length */
+				0x01, 0x6E, /* Attributes length */
+				0x36, 0x01, 0x6b, 0x36, 0x01, 0x68, 0x09, 0x00,
+				0x00, 0x0a, 0x00, 0x01, 0x00, 0x00, 0x09, 0x00,
+				0x01, 0x35, 0x03, 0x19, 0x11, 0x24, 0x09, 0x00,
+				0x04, 0x35, 0x0d, 0x35, 0x06, 0x19, 0x01, 0x00,
+				0x09, 0x00, 0x11, 0x35, 0x03, 0x19, 0x00, 0x11,
+				0x09, 0x00, 0x05, 0x35, 0x03, 0x19, 0x10, 0x02,
+				0x09, 0x00, 0x06, 0x35, 0x09, 0x09, 0x65, 0x6e,
+				0x09, 0x00, 0x6a, 0x09, 0x01, 0x00, 0x09, 0x00,
+				0x09, 0x35, 0x08, 0x35, 0x06, 0x19, 0x11, 0x24,
+				0x09, 0x01, 0x00, 0x09, 0x00, 0x0d, 0x35, 0x0f,
+				0x35, 0x0d, 0x35, 0x06, 0x19, 0x01, 0x00, 0x09,
+				0x00, 0x13, 0x35, 0x03, 0x19, 0x00, 0x11, 0x09,
+				0x01, 0x00, 0x25, 0x1e, 0x4c, 0x6f, 0x67, 0x69,
+				0x74, 0x65, 0x63, 0x68, 0x20, 0x42, 0x6c, 0x75,
+				0x65, 0x74, 0x6f, 0x6f, 0x74, 0x68, 0x20, 0x4d,
+				0x6f, 0x75, 0x73, 0x65, 0x20, 0x4d, 0x35, 0x35,
+				0x35, 0x62, 0x09, 0x01, 0x01, 0x25, 0x0f, 0x42,
+				0x6c, 0x75, 0x65, 0x74, 0x6f, 0x6f, 0x74, 0x68,
+				0x20, 0x4d, 0x6f, 0x75, 0x73, 0x65, 0x09, 0x01,
+				0x02, 0x25, 0x08, 0x4c, 0x6f, 0x67, 0x69, 0x74,
+				0x65, 0x63, 0x68, 0x09, 0x02, 0x00, 0x09, 0x01,
+				0x00, 0x09, 0x02, 0x01, 0x09, 0x01, 0x11, 0x09,
+				0x02, 0x02, 0x08, 0x80, 0x09, 0x02, 0x03, 0x08,
+				0x21, 0x09, 0x02, 0x04, 0x28, 0x01, 0x09, 0x02,
+				0x05, 0x28, 0x01, 0x09, 0x02, 0x06, 0x35, 0x74,
+				0x35, 0x72, 0x08, 0x22, 0x25, 0x6e, 0x05, 0x01,
+				0x09, 0x02, 0xa1, 0x01, 0x85, 0x02, 0x09, 0x01,
+				0xa1, 0x00, 0x05, 0x09, 0x19, 0x01, 0x29, 0x08,
+				0x15, 0x00, 0x25, 0x01, 0x75, 0x01, 0x95, 0x08,
+				0x81, 0x02, 0x05, 0x01, 0x09, 0x30, 0x09, 0x31,
+				0x16, 0x01, 0xf8, 0x26, 0xff, 0x07, 0x75, 0x0c,
+				0x95, 0x02, 0x81, 0x06, 0x09, 0x38, 0x15, 0x81,
+				0x25, 0x7f, 0x75, 0x08, 0x95, 0x01, 0x81, 0x06,
+				0x05, 0x0c, 0x0a, 0x38, 0x02, 0x81, 0x06, 0x05,
+				0x09, 0x19, 0x09, 0x29, 0x10, 0x15, 0x00, 0x25,
+				0x01, 0x95, 0x08, 0x75, 0x01, 0x81, 0x02, 0xc0,
+				0xc0, 0x06, 0x00, 0xff, 0x09, 0x01, 0xa1, 0x01,
+				0x85, 0x10, 0x75, 0x08, 0x95, 0x06, 0x15, 0x00,
+				0x26, 0xff, 0x00, 0x09, 0x01, 0x81, 0x00, 0x09,
+				0x01, 0x91, 0x00, 0xc0, 0x09, 0x02, 0x07, 0x35,
+				0x08, 0x35, 0x06, 0x09, 0x04, 0x09, 0x09, 0x01,
+				0x00, 0x09, 0x02, 0x08, 0x28, 0x00, 0x09, 0x02,
+				0x09, 0x28, 0x01, 0x09, 0x02, 0x0a, 0x28, 0x01,
+				0x09, 0x02, 0x0b, 0x09, 0x01, 0x00, 0x09, 0x02,
+				0x0c, 0x09, 0x0c, 0x80, 0x09, 0x02, 0x0d, 0x28,
+				0x00, 0x09, 0x02, 0x0e, 0x28, 0x01,
+				0x00 /* no continuation */};
+
+	bthost_send_cid(bthost, t_data->sdp_handle, t_data->sdp_cid,
+						(void *)pdu, sizeof(pdu));
+}
+
+static void hid_sdp_search_cb(uint16_t handle, uint16_t cid, void *user_data)
+{
+	struct test_data *data = tester_get_data();
+	struct bthost *bthost = hciemu_client_get_host(data->hciemu);
+
+	data->sdp_handle = handle;
+	data->sdp_cid = cid;
+
+	bthost_add_cid_hook(bthost, handle, cid, hid_sdp_cid_hook_cb, NULL);
+}
+
+static void emu_powered_complete(uint16_t opcode, uint8_t status,
+					const void *param, uint8_t len,
+					void *user_data)
+{
+	struct test_data *data = tester_get_data();
+	const uint8_t *hid_addr = hciemu_get_client_bdaddr(data->hciemu);
+	bt_bdaddr_t bdaddr;
+	bt_status_t bt_status;
+
+	switch (opcode) {
+	case BT_HCI_CMD_WRITE_SCAN_ENABLE:
+	case BT_HCI_CMD_LE_SET_ADV_ENABLE:
+		break;
+	default:
+		return;
+	}
+
+	if (status) {
+		tester_setup_failed();
+		return;
+	}
+
+	data->cb_count = 0;
+	bdaddr2android((const bdaddr_t *) hid_addr, &bdaddr);
+	bt_status = data->if_hid->connect(&bdaddr);
+	if (bt_status != BT_STATUS_SUCCESS)
+		tester_setup_failed();
+
+}
+
+static void setup_hidhost_connect(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+	struct bthost *bthost;
+
+	setup_hidhost(test_data);
+
+	bthost = hciemu_client_get_host(data->hciemu);
+
+	/* Emulate SDP (PSM = 1) */
+	bthost_add_l2cap_server(bthost, 1, hid_sdp_search_cb, NULL);
+	/* Emulate Control Channel (PSM = 17) */
+	bthost_add_l2cap_server(bthost, 17, hid_ctrl_connect_cb, NULL);
+	/* Emulate Interrupt Channel (PSM = 19) */
+	bthost_add_l2cap_server(bthost, 19, hid_intr_connect_cb, NULL);
+
+	bthost_set_cmd_complete_cb(bthost, emu_powered_complete, data);
+	bthost_write_scan_enable(bthost, 0x03);
+}
+
+static void hid_discon_cb(bt_bdaddr_t *bd_addr,	bthh_connection_state_t state)
+{
+	if (state == BTHH_CONN_STATE_DISCONNECTED)
+		tester_test_passed();
+}
+
+static const struct hidhost_generic_data hidhost_test_disconnect = {
+	.expected_hal_cb.connection_state_cb = hid_discon_cb,
+};
+
+static void test_hidhost_disconnect(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+	const uint8_t *hid_addr = hciemu_get_client_bdaddr(data->hciemu);
+	bt_bdaddr_t bdaddr;
+	bt_status_t bt_status;
+
+	data->cb_count = 0;
+	bdaddr2android((const bdaddr_t *) hid_addr, &bdaddr);
+	bt_status = data->if_hid->disconnect(&bdaddr);
+	if (bt_status != BT_STATUS_SUCCESS)
+		tester_test_failed();
+}
+
+static void test_hidhost_virtual_unplug(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+	const uint8_t *hid_addr = hciemu_get_client_bdaddr(data->hciemu);
+	bt_bdaddr_t bdaddr;
+	bt_status_t bt_status;
+
+	data->cb_count = 0;
+	bdaddr2android((const bdaddr_t *) hid_addr, &bdaddr);
+	bt_status = data->if_hid->virtual_unplug(&bdaddr);
+	if (bt_status != BT_STATUS_SUCCESS)
+		tester_test_failed();
+}
+
+static void hid_protocol_mode_cb(bt_bdaddr_t *bd_addr, bthh_status_t status,
+						bthh_protocol_mode_t mode)
+{
+	struct test_data *data = tester_get_data();
+	const struct hidhost_generic_data *test = data->test_data;
+
+	if (data->cb_count == test->expected_cb_count &&
+					status == test->expected_status &&
+					mode == test->expected_protocol_mode)
+		tester_test_passed();
+	else
+		tester_test_failed();
+}
+
+static const struct hidhost_generic_data hidhost_test_get_protocol = {
+	.expected_hal_cb.protocol_mode_cb = hid_protocol_mode_cb,
+	.expected_cb_count = 1,
+	.expected_protocol_mode = BTHH_BOOT_MODE,
+	.expected_status = BTHH_OK,
+};
+
+static void test_hidhost_get_protocol(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+	const uint8_t *hid_addr = hciemu_get_client_bdaddr(data->hciemu);
+	bt_bdaddr_t bdaddr;
+	bt_status_t bt_status;
+
+	data->cb_count = 0;
+	bdaddr2android((const bdaddr_t *) hid_addr, &bdaddr);
+	bt_status = data->if_hid->get_protocol(&bdaddr, BTHH_REPORT_MODE);
+	if (bt_status != BT_STATUS_SUCCESS)
+		tester_test_failed();
+}
+
+static void test_hidhost_set_protocol(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+	const uint8_t *hid_addr = hciemu_get_client_bdaddr(data->hciemu);
+	bt_bdaddr_t bdaddr;
+	bt_status_t bt_status;
+
+	data->cb_count = 0;
+	bdaddr2android((const bdaddr_t *) hid_addr, &bdaddr);
+	bt_status = data->if_hid->set_protocol(&bdaddr, BTHH_REPORT_MODE);
+	if (bt_status != BT_STATUS_SUCCESS)
+		tester_test_failed();
+}
+
+static void test_hidhost_set_report(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+	const uint8_t *hid_addr = hciemu_get_client_bdaddr(data->hciemu);
+	bt_bdaddr_t bdaddr;
+	bt_status_t bt_status;
+	char *buf = "010101";
+
+	data->cb_count = 0;
+	bdaddr2android((const bdaddr_t *) hid_addr, &bdaddr);
+	bt_status = data->if_hid->set_report(&bdaddr, BTHH_INPUT_REPORT, buf);
+	if (bt_status != BT_STATUS_SUCCESS)
+		tester_test_failed();
+}
+
+static void test_hidhost_send_data(const void *test_data)
+{
+	struct test_data *data = tester_get_data();
+	const uint8_t *hid_addr = hciemu_get_client_bdaddr(data->hciemu);
+	bt_bdaddr_t bdaddr;
+	bt_status_t bt_status;
+	char *buf = "fe0201";
+
+	data->cb_count = 0;
+	bdaddr2android((const bdaddr_t *) hid_addr, &bdaddr);
+	bt_status = data->if_hid->send_data(&bdaddr, buf);
+	if (bt_status != BT_STATUS_SUCCESS)
+		tester_test_failed();
+}
+
 #define test_bredrle(name, data, test_setup, test, test_teardown) \
 	do { \
 		struct test_data *user; \
@@ -1637,8 +3538,9 @@ int main(int argc, char *argv[])
 	test_bredrle("Bluetooth Enable - Success", &bluetooth_enable_success_test,
 					setup_base, test_enable, teardown);
 
-	test_bredrle("Bluetooth Enable - Done", &bluetooth_enable_done_test,
-			setup_enabled_adapter, test_enable_done, teardown);
+	test_bredrle("Bluetooth Enable - Success 2",
+			&bluetooth_enable_success2_test, setup_enabled_adapter,
+			test_enable_done, teardown);
 
 	test_bredrle("Bluetooth Disable - Success", &bluetooth_disable_success_test,
 			setup_enabled_adapter, test_disable, teardown);
@@ -1693,30 +3595,210 @@ int main(int argc, char *argv[])
 				setup_enabled_adapter,
 				test_setprop_service_record_invalid, teardown);
 
-	test_bredrle("Bluetooth BREDR Discovery Start - Success",
+	test_bredrle("Bluetooth Set BDADDR - Invalid",
+					&bluetooth_setprop_bdaddr_invalid_test,
+					setup_enabled_adapter,
+					test_setprop_bdaddr_invalid, teardown);
+
+	test_bredrle("Bluetooth Set SCAN_MODE CONNECTABLE - Success",
+			&bluetooth_setprop_scanmode_connectable_success_test,
+			setup_enabled_adapter,
+			test_setprop_scanmode_connectable_success, teardown);
+
+	test_bredrle("Bluetooth Set BONDED_DEVICES - Invalid",
+				&bluetooth_setprop_bonded_devices_invalid_test,
+				setup_enabled_adapter,
+				test_setprop_bonded_devices_invalid, teardown);
+
+	test_bredrle("Bluetooth Get CLASS_OF_DEVICE - Success",
+					&bluetooth_getprop_cod_success_test,
+					setup_enabled_adapter,
+					test_getprop_cod_success, teardown);
+
+	test_bredrle("Bluetooth Get TYPE_OF_DEVICE - Success",
+					&bluetooth_getprop_tod_success_test,
+					setup_enabled_adapter,
+					test_getprop_tod_success, teardown);
+
+	test_bredrle("Bluetooth Get SCAN_MODE - Success",
+				&bluetooth_getprop_scanmode_success_test,
+				setup_enabled_adapter,
+				test_getprop_scanmode_success, teardown);
+
+	test_bredrle("Bluetooth Get DISCOVERY_TIMEOUT - Success",
+				&bluetooth_getprop_disctimeout_success_test,
+				setup_enabled_adapter,
+				test_getprop_disctimeout_success, teardown);
+
+	test_bredrle("Bluetooth Get UUIDS - Success",
+					&bluetooth_getprop_uuids_success_test,
+					setup_enabled_adapter,
+					test_getprop_uuids_success, teardown);
+
+	test_bredrle("Bluetooth Get BONDED_DEVICES - Success",
+				&bluetooth_getprop_bondeddev_success_test,
+				setup_enabled_adapter,
+				test_getprop_bondeddev_success, teardown);
+
+	test_bredrle("Bluetooth Set SCAN_MODE NONE - Success 2",
+				&bluetooth_setprop_scanmode_none_success2_test,
+				setup_enabled_adapter,
+				test_setprop_scanmode_none_done, teardown);
+
+	test_bredrle("Bluetooth BR/EDR Discovery Start - Success",
 				&bluetooth_discovery_start_success_test,
 				setup_enabled_adapter,
 				test_discovery_start_success, teardown);
 
-	test_bredrle("Bluetooth BREDR Discovery Start - Done",
-				&bluetooth_discovery_start_done_test,
+	test_bredrle("Bluetooth BR/EDR Discovery Start - Success 2",
+				&bluetooth_discovery_start_success2_test,
 				setup_enabled_adapter,
 				test_discovery_start_done, teardown);
 
-	test_bredrle("Bluetooth BREDR Discovery Stop - Success",
+	test_bredrle("Bluetooth BR/EDR Discovery Stop - Success",
 				&bluetooth_discovery_stop_success_test,
 				setup_enabled_adapter,
 				test_discovery_stop_success, teardown);
 
-	test_bredrle("Bluetooth BREDR Discovery Stop - Done",
-				&bluetooth_discovery_stop_done_test,
+	test_bredrle("Bluetooth BR/EDR Discovery Stop - Success 2",
+				&bluetooth_discovery_stop_success2_test,
 				setup_enabled_adapter,
 				test_discovery_stop_done, teardown);
 
-	test_bredrle("Bluetooth BREDR Discovery Device Found",
+	test_bredrle("Bluetooth BR/EDR Discovery Device Found",
 				&bluetooth_discovery_device_found_test,
 				setup_enabled_adapter,
 				test_discovery_device_found, teardown);
+
+	test_bredrle("Bluetooth Device Get Props - Success",
+					&bt_dev_getprops_success_test,
+					setup_enabled_adapter,
+					test_dev_getprops_success, teardown);
+
+	test_bredrle("Bluetooth Device Get BDNAME - Success",
+				&bt_dev_getprop_bdname_success_test,
+				setup_enabled_adapter,
+				test_dev_getprop_bdname_success, teardown);
+
+	test_bredrle("Bluetooth Device Get UUIDS - Success",
+				&bt_dev_getprop_uuids_success_test,
+				setup_enabled_adapter,
+				test_dev_getprop_uuids_success, teardown);
+
+	test_bredrle("Bluetooth Device Get COD - Success",
+					&bt_dev_getprop_cod_success_test,
+					setup_enabled_adapter,
+					test_dev_getprop_cod_success, teardown);
+
+	test_bredrle("Bluetooth Device Get TOD - Success",
+					&bt_dev_getprop_tod_success_test,
+					setup_enabled_adapter,
+					test_dev_getprop_tod_success, teardown);
+
+	test_bredrle("Bluetooth Device Get RSSI - Success",
+				&bt_dev_getprop_rssi_success_test,
+				setup_enabled_adapter,
+				test_dev_getprop_rssi_success, teardown);
+
+	test_bredrle("Bluetooth Device Get TIMESTAMP - Success",
+				&bt_dev_getprop_timpestamp_success_test,
+				setup_enabled_adapter,
+				test_dev_getprop_timestamp_success, teardown);
+
+	test_bredrle("Bluetooth Device Get BDADDR - Fail",
+				&bt_dev_getprop_bdaddr_fail_test,
+				setup_enabled_adapter,
+				test_dev_getprop_bdaddr_fail, teardown);
+
+	test_bredrle("Bluetooth Device Get SERVICE_RECORD - Fail",
+				&bt_dev_getprop_servrec_fail_test,
+				setup_enabled_adapter,
+				test_dev_getprop_servrec_fail, teardown);
+
+	test_bredrle("Bluetooth Device Get SCAN_MODE - Fail",
+				&bt_dev_getprop_scanmode_fail_test,
+				setup_enabled_adapter,
+				test_dev_getprop_scanmode_fail, teardown);
+
+	test_bredrle("Bluetooth Device Get BONDED_DEVICES - Fail",
+				&bt_dev_getprop_bondeddev_fail_test,
+				setup_enabled_adapter,
+				test_dev_getprop_bondeddev_fail, teardown);
+
+	test_bredrle("Bluetooth Device Get DISCOVERY_TIMEOUT - Fail",
+				&bt_dev_getprop_disctimeout_fail_test,
+				setup_enabled_adapter,
+				test_dev_getprop_disctimeout_fail, teardown);
+
+	test_bredrle("Bluetooth Device Get VERSION_INFO - Fail",
+				&bt_dev_getprop_verinfo_fail_test,
+				setup_enabled_adapter,
+				test_dev_getprop_verinfo_fail, teardown);
+
+	test_bredrle("Bluetooth Device Get FRIENDLY_NAME - Fail",
+					&bt_dev_getprop_fname_fail_test,
+					setup_enabled_adapter,
+					test_dev_getprop_fname_fail, teardown);
+
+	test_bredrle("Bluetooth Device Set FRIENDLY_NAME - Success",
+				&bt_dev_setprop_fname_success_test,
+				setup_enabled_adapter,
+				test_dev_setprop_fname_success, teardown);
+
+	test_bredrle("Bluetooth Device Set BDNAME - Fail",
+					&bt_dev_setprop_bdname_fail_test,
+					setup_enabled_adapter,
+					test_dev_setprop_bdname_fail, teardown);
+
+	test_bredrle("Bluetooth Device Set UUIDS - Fail",
+					&bt_dev_setprop_uuids_fail_test,
+					setup_enabled_adapter,
+					test_dev_setprop_uuids_fail, teardown);
+
+	test_bredrle("Bluetooth Device Set COD - Fail",
+					&bt_dev_setprop_cod_fail_test,
+					setup_enabled_adapter,
+					test_dev_setprop_cod_fail, teardown);
+
+	test_bredrle("Bluetooth Device Set TOD - Fail",
+					&bt_dev_setprop_tod_fail_test,
+					setup_enabled_adapter,
+					test_dev_setprop_tod_fail, teardown);
+
+	test_bredrle("Bluetooth Device Set RSSI - Fail",
+				&bt_dev_setprop_rssi_fail_test,
+				setup_enabled_adapter,
+				test_dev_setprop_rssi_fail, teardown);
+
+	test_bredrle("Bluetooth Device Set TIMESTAMP - Fail",
+				&bt_dev_setprop_timpestamp_fail_test,
+				setup_enabled_adapter,
+				test_dev_setprop_timestamp_fail, teardown);
+
+	test_bredrle("Bluetooth Device Set BDADDR - Fail",
+				&bt_dev_setprop_bdaddr_fail_test,
+				setup_enabled_adapter,
+				test_dev_setprop_bdaddr_fail, teardown);
+
+	test_bredrle("Bluetooth Device Set SERVICE_RECORD - Fail",
+				&bt_dev_setprop_servrec_fail_test,
+				setup_enabled_adapter,
+				test_dev_setprop_servrec_fail, teardown);
+
+	test_bredrle("Bluetooth Device Set SCAN_MODE - Fail",
+				&bt_dev_setprop_scanmode_fail_test,
+				setup_enabled_adapter,
+				test_dev_setprop_scanmode_fail, teardown);
+
+	test_bredrle("Bluetooth Device Set BONDED_DEVICES - Fail",
+				&bt_dev_setprop_bondeddev_fail_test,
+				setup_enabled_adapter,
+				test_dev_setprop_bondeddev_fail, teardown);
+
+	test_bredrle("Bluetooth Device Set DISCOVERY_TIMEOUT - Fail",
+				&bt_dev_setprop_disctimeout_fail_test,
+				setup_enabled_adapter,
+				test_dev_setprop_disctimeout_fail, teardown);
 
 	test_bredrle("Socket Init", NULL, setup_socket_interface,
 						test_dummy, teardown);
@@ -1774,5 +3856,35 @@ int main(int argc, char *argv[])
 			setup_socket_interface_enabled,
 			test_socket_real_connect, teardown);
 
+	test_bredrle("HIDHost Init", NULL, setup_hidhost_interface,
+						test_dummy, teardown);
+
+	test_bredrle("HIDHost Connect Success",
+				NULL, setup_hidhost_connect,
+				test_dummy, teardown);
+
+	test_bredrle("HIDHost Disconnect Success",
+				&hidhost_test_disconnect, setup_hidhost_connect,
+				test_hidhost_disconnect, teardown);
+
+	test_bredrle("HIDHost VirtualUnplug Success",
+				&hidhost_test_disconnect, setup_hidhost_connect,
+				test_hidhost_virtual_unplug, teardown);
+
+	test_bredrle("HIDHost GetProtocol Success",
+			&hidhost_test_get_protocol, setup_hidhost_connect,
+				test_hidhost_get_protocol, teardown);
+
+	test_bredrle("HIDHost SetProtocol Success",
+			&hidhost_test_get_protocol, setup_hidhost_connect,
+				test_hidhost_set_protocol, teardown);
+
+	test_bredrle("HIDHost SetReport Success",
+				NULL, setup_hidhost_connect,
+				test_hidhost_set_report, teardown);
+
+	test_bredrle("HIDHost SendData Success",
+				NULL, setup_hidhost_connect,
+				test_hidhost_send_data, teardown);
 	return tester_run();
 }

@@ -34,7 +34,6 @@
 #include "hal-ipc.h"
 
 #define CONNECT_TIMEOUT (5 * 1000)
-#define SERVICE_NAME "bluetoothd"
 
 static int cmd_sk = -1;
 static int notif_sk = -1;
@@ -259,8 +258,8 @@ bool hal_ipc_init(void)
 	}
 
 	/* Start Android Bluetooth daemon service */
-	if (property_set("ctl.start", SERVICE_NAME) < 0) {
-		error("Failed to start service %s", SERVICE_NAME);
+	if (property_set("bluetooth.start", "daemon") < 0) {
+		error("Failed to set bluetooth.start=daemon");
 		close(sk);
 		return false;
 	}
@@ -284,10 +283,10 @@ bool hal_ipc_init(void)
 	close(sk);
 
 	err = pthread_create(&notif_th, NULL, notification_handler, NULL);
-	if (err < 0) {
+	if (err) {
 		notif_th = 0;
-		error("Failed to start notification thread: %d (%s)", -err,
-							strerror(-err));
+		error("Failed to start notification thread: %d (%s)", err,
+							strerror(err));
 		close(cmd_sk);
 		cmd_sk = -1;
 		close(notif_sk);

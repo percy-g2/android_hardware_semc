@@ -50,11 +50,16 @@
 #include "utils.h"
 #include "bluetooth.h"
 
+#define DEFAULT_ADAPTER_NAME "BlueZ for Android"
+
 #define DUT_MODE_FILE "/sys/kernel/debug/bluetooth/hci%u/dut_mode"
 
 #define DEVICE_ID_SOURCE	0x0002	/* USB */
 #define DEVICE_ID_VENDOR	0x1d6b	/* Linux Foundation */
 #define DEVICE_ID_PRODUCT	0x0247	/* BlueZ for Android */
+
+#define ADAPTER_MAJOR_CLASS 0x02 /* Phone */
+#define ADAPTER_MINOR_CLASS 0x03 /* Smartphone */
 
 /* Default to DisplayYesNo */
 #define DEFAULT_IO_CAPABILITY 0x01
@@ -85,6 +90,8 @@ struct device {
 	uint32_t timestamp;
 
 	GSList *uuids;
+
+	bool found; /* if device is found in current discovery session */
 };
 
 struct browse_req {
@@ -265,19 +272,19 @@ done:
 	g_strfreev(uuids);
 }
 
-static int bdaddr_cmp(gconstpointer a, gconstpointer b)
+static int device_match(gconstpointer a, gconstpointer b)
 {
-	const bdaddr_t *bda = a;
-	const bdaddr_t *bdb = b;
+	const struct device *dev = a;
+	const bdaddr_t *bdaddr = b;
 
-	return bacmp(bdb, bda);
+	return bacmp(&dev->bdaddr, bdaddr);
 }
 
 static struct device *find_device(const bdaddr_t *bdaddr)
 {
 	GSList *l;
 
-	l = g_slist_find_custom(devices, bdaddr, bdaddr_cmp);
+	l = g_slist_find_custom(devices, bdaddr, device_match);
 	if (l)
 		return l->data;
 
@@ -522,7 +529,7 @@ static void store_link_key(const bdaddr_t *dst, const uint8_t *key,
 
 	g_key_file_set_string(key_file, addr, "LinkKey", key_str);
 	g_key_file_set_integer(key_file, addr, "LinkKeyType", type);
-	g_key_file_set_integer(key_file, addr, "LinkKeyPINLength", pin_length);
+	g_key_file_set_integer(key_file, addr, "LinkKeyPinLength", pin_length);
 
 	data = g_key_file_to_data(key_file, &length, NULL);
 	g_file_set_contents(ANDROID_STORAGEDIR"/devices", data, length, NULL);
@@ -686,7 +693,7 @@ static void browse_cb(sdp_list_t *recs, int err, gpointer user_data)
 	if (uuid_list[req->search_uuid]) {
 		sdp_uuid16_create(&uuid, uuid_list[req->search_uuid++]);
 		bt_search_service(&adapter.bdaddr, &req->bdaddr, &uuid,
-						browse_cb, user_data, NULL);
+						browse_cb, user_data, NULL, 0);
 		return;
 	}
 
@@ -715,16 +722,16 @@ static uint8_t browse_remote_sdp(const bdaddr_t *addr)
 	uuid_t uuid;
 
 	if (g_slist_find_custom(browse_reqs, addr, req_cmp))
-		return HAL_STATUS_DONE;
+		return HAL_STATUS_SUCCESS;
 
 	req = g_new0(struct browse_req, 1);
 	bacpy(&req->bdaddr, addr);
 	sdp_uuid16_create(&uuid, uuid_list[req->search_uuid++]);
 
 	if (bt_search_service(&adapter.bdaddr,
-			&req->bdaddr, &uuid, browse_cb, req, NULL) < 0) {
+			&req->bdaddr, &uuid, browse_cb, req, NULL , 0) < 0) {
 		browse_req_free(req);
-		return false;
+		return HAL_STATUS_FAILED;
 	}
 
 	browse_reqs = g_slist_append(browse_reqs, req);
@@ -898,6 +905,13 @@ static void user_passkey_notify_callback(uint16_t index, uint16_t length,
 	send_ssp_request(&ev->addr.bdaddr, HAL_SSP_VARIANT_NOTIF, ev->passkey);
 }
 
+static void clear_device_found(gpointer data, gpointer user_data)
+{
+	struct device *dev = data;
+
+	dev->found = false;
+}
+
 static void mgmt_discovering_event(uint16_t index, uint16_t length,
 					const void *param, void *user_data)
 {
@@ -919,10 +933,12 @@ static void mgmt_discovering_event(uint16_t index, uint16_t length,
 
 	DBG("new discovering state %u", ev->discovering);
 
-	if (adapter.discovering)
+	if (adapter.discovering) {
 		cp.state = HAL_DISCOVERY_STATE_STARTED;
-	else
+	} else {
+		g_slist_foreach(devices, clear_device_found, NULL);
 		cp.state = HAL_DISCOVERY_STATE_STOPPED;
+	}
 
 	ipc_send_notif(HAL_SERVICE_ID_BLUETOOTH,
 			HAL_EV_DISCOVERY_STATE_CHANGED, sizeof(cp), &cp);
@@ -978,12 +994,20 @@ static void update_found_device(const bdaddr_t *bdaddr, uint8_t bdaddr_type,
 	eir_parse(&eir, data, data_len);
 
 	dev = find_device(bdaddr);
-	if (!dev) {
+
+	/*
+	 * Device found event needs to be send also for known device if this is
+	 * new discovery session. Otherwise framework will ignore it.
+	 */
+	if (!dev || !dev->found) {
 		struct hal_ev_device_found *ev = (void *) buf;
 		bdaddr_t android_bdaddr;
 		uint8_t android_type;
 
-		dev = create_device(bdaddr, bdaddr_type);
+		if (!dev)
+			dev = create_device(bdaddr, bdaddr_type);
+
+		dev->found = true;
 
 		size += sizeof(*ev);
 
@@ -1040,7 +1064,8 @@ static void update_found_device(const bdaddr_t *bdaddr, uint8_t bdaddr_type,
 		(*num_prop)++;
 	}
 
-	ipc_send_notif(HAL_SERVICE_ID_BLUETOOTH, opcode, size, buf);
+	if (*num_prop)
+		ipc_send_notif(HAL_SERVICE_ID_BLUETOOTH, opcode, size, buf);
 
 	if (confirm) {
 		char addr[18];
@@ -1660,7 +1685,7 @@ static struct mgmt_link_key_info *get_key_info(GKeyFile *key_file, const char *p
 	info->type = g_key_file_get_integer(key_file, peer, "LinkKeyType",
 									NULL);
 	info->pin_len = g_key_file_get_integer(key_file, peer,
-						"LinkKeyPINLength", NULL);
+						"LinkKeyPinLength", NULL);
 
 failed:
 	g_free(str);
@@ -1701,6 +1726,26 @@ static void load_devices_info(bt_bluetooth_ready cb)
 	g_key_file_free(key_file);
 }
 
+static void set_adapter_class(void)
+{
+	struct mgmt_cp_set_dev_class cp;
+
+	memset(&cp, 0, sizeof(cp));
+
+	/*
+	 * kernel assign the major and minor numbers straight to dev_class[0]
+	 * and dev_class[1] without considering the proper bit shifting.
+	 */
+	cp.major = ADAPTER_MAJOR_CLASS & 0x1f;
+	cp.minor = ADAPTER_MINOR_CLASS << 2;
+
+	if (mgmt_send(mgmt_if, MGMT_OP_SET_DEV_CLASS, adapter.index,
+					sizeof(cp), &cp, NULL, NULL, NULL) > 0)
+		return;
+
+	error("Failed to set class of device");
+}
+
 static void read_info_complete(uint8_t status, uint16_t length,
 					const void *param, void *user_data)
 {
@@ -1734,14 +1779,18 @@ static void read_info_complete(uint8_t status, uint16_t length,
 
 	if (!bacmp(&adapter.bdaddr, BDADDR_ANY)) {
 		bacpy(&adapter.bdaddr, &rp->bdaddr);
-		adapter.name = g_strdup((const char *) rp->name);
+		adapter.name = g_strdup(DEFAULT_ADAPTER_NAME);
 		store_adapter_config();
-		set_adapter_name(rp->name, strlen((char *)rp->name));
 	} else if (bacmp(&adapter.bdaddr, &rp->bdaddr)) {
 		error("Bluetooth address mismatch");
 		err = -ENODEV;
 		goto failed;
 	}
+
+	if (g_strcmp0(adapter.name, (const char *) rp->name))
+		set_adapter_name((uint8_t *)adapter.name, strlen(adapter.name));
+
+	set_adapter_class();
 
 	/* Store adapter information */
 	adapter.dev_class = rp->dev_class[0] | (rp->dev_class[1] << 8) |
@@ -1764,6 +1813,9 @@ static void read_info_complete(uint8_t status, uint16_t length,
 
 	if (missing_settings & MGMT_SETTING_SSP)
 		set_mode(MGMT_OP_SET_SSP, 0x01);
+
+	if (missing_settings & MGMT_SETTING_SECURE_CONN)
+		set_mode(MGMT_OP_SET_SECURE_CONN, 0x01);
 
 	if (missing_settings & MGMT_SETTING_PAIRABLE)
 		set_mode(MGMT_OP_SET_PAIRABLE, 0x01);
@@ -2146,7 +2198,7 @@ static void handle_get_adapter_prop_cmd(const void *buf, uint16_t len)
 		break;
 	}
 
-	if (status != HAL_STATUS_SUCCESS && status != HAL_STATUS_DONE)
+	if (status != HAL_STATUS_SUCCESS)
 		error("Failed to get adapter property (type %u status %u)",
 							cmd->type, status);
 
@@ -2266,7 +2318,7 @@ done:
 	/* Android expects property changed callback */
 	scan_mode_changed();
 
-	return HAL_STATUS_DONE;
+	return HAL_STATUS_SUCCESS;
 }
 
 static void handle_set_adapter_prop_cmd(const void *buf, uint16_t len)
@@ -2297,7 +2349,7 @@ static void handle_set_adapter_prop_cmd(const void *buf, uint16_t len)
 		break;
 	}
 
-	if (status != HAL_STATUS_SUCCESS && status != HAL_STATUS_DONE)
+	if (status != HAL_STATUS_SUCCESS)
 		error("Failed to set adapter property (type %u status %u)",
 							cmd->type, status);
 
@@ -2550,56 +2602,6 @@ static void handle_get_remote_services_cmd(const void *buf, uint16_t len)
 									status);
 }
 
-static void handle_enable_cmd(const void *buf, uint16_t len)
-{
-	uint8_t status;
-
-	/* Framework expects all properties to be emitted while
-	 * enabling adapter */
-	get_adapter_properties();
-
-	if (adapter.current_settings & MGMT_SETTING_POWERED) {
-		status = HAL_STATUS_DONE;
-		goto failed;
-	}
-
-	if (!set_mode(MGMT_OP_SET_POWERED, 0x01)) {
-		status = HAL_STATUS_FAILED;
-		goto failed;
-	}
-
-	status = HAL_STATUS_SUCCESS;
-failed:
-	ipc_send_rsp(HAL_SERVICE_ID_BLUETOOTH, HAL_OP_ENABLE, status);
-}
-
-static void handle_disable_cmd(const void *buf, uint16_t len)
-{
-	uint8_t status;
-
-	if (!(adapter.current_settings & MGMT_SETTING_POWERED)) {
-		status = HAL_STATUS_DONE;
-		goto failed;
-	}
-
-	if (!set_mode(MGMT_OP_SET_POWERED, 0x00)) {
-		status = HAL_STATUS_FAILED;
-		goto failed;
-	}
-
-	status = HAL_STATUS_SUCCESS;
-failed:
-	ipc_send_rsp(HAL_SERVICE_ID_BLUETOOTH, HAL_OP_DISABLE, status);
-}
-
-static void handle_get_adapter_props_cmd(const void *buf, uint16_t len)
-{
-	get_adapter_properties();
-
-	ipc_send_rsp(HAL_SERVICE_ID_BLUETOOTH, HAL_OP_GET_ADAPTER_PROPS,
-							HAL_STATUS_SUCCESS);
-}
-
 static uint8_t get_device_uuids(struct device *dev)
 {
 	send_device_uuids_notif(dev);
@@ -2673,30 +2675,100 @@ static uint8_t get_device_timestamp(struct device *dev)
 	return HAL_STATUS_SUCCESS;
 }
 
+static void get_remote_device_props(struct device *dev)
+{
+	get_device_name(dev);
+	get_device_uuids(dev);
+	get_device_class(dev);
+	get_device_type(dev);
+	get_device_service_rec(dev);
+	get_device_friendly_name(dev);
+	get_device_rssi(dev);
+	get_device_version_info(dev);
+	get_device_timestamp(dev);
+}
+
+static void send_bonded_devices_props(void)
+{
+	GSList *l;
+
+	for (l = devices; l; l = g_slist_next(l)) {
+		struct device *dev = l->data;
+
+		if (dev->bond_state == HAL_BOND_STATE_BONDED)
+			get_remote_device_props(dev);
+	}
+}
+
+static void handle_enable_cmd(const void *buf, uint16_t len)
+{
+	uint8_t status;
+
+	/* Framework expects all properties to be emitted while
+	 * enabling adapter */
+	get_adapter_properties();
+
+	/* Sent also properties of bonded devices */
+	send_bonded_devices_props();
+
+	if (adapter.current_settings & MGMT_SETTING_POWERED) {
+		status = HAL_STATUS_SUCCESS;
+		goto reply;
+	}
+
+	if (!set_mode(MGMT_OP_SET_POWERED, 0x01)) {
+		status = HAL_STATUS_FAILED;
+		goto reply;
+	}
+
+	status = HAL_STATUS_SUCCESS;
+reply:
+	ipc_send_rsp(HAL_SERVICE_ID_BLUETOOTH, HAL_OP_ENABLE, status);
+}
+
+static void handle_disable_cmd(const void *buf, uint16_t len)
+{
+	uint8_t status;
+
+	if (!(adapter.current_settings & MGMT_SETTING_POWERED)) {
+		status = HAL_STATUS_SUCCESS;
+		goto reply;
+	}
+
+	if (!set_mode(MGMT_OP_SET_POWERED, 0x00)) {
+		status = HAL_STATUS_FAILED;
+		goto reply;
+	}
+
+	status = HAL_STATUS_SUCCESS;
+reply:
+	ipc_send_rsp(HAL_SERVICE_ID_BLUETOOTH, HAL_OP_DISABLE, status);
+}
+
+static void handle_get_adapter_props_cmd(const void *buf, uint16_t len)
+{
+	get_adapter_properties();
+
+	ipc_send_rsp(HAL_SERVICE_ID_BLUETOOTH, HAL_OP_GET_ADAPTER_PROPS,
+							HAL_STATUS_SUCCESS);
+}
+
 static void handle_get_remote_device_props_cmd(const void *buf, uint16_t len)
 {
 	const struct hal_cmd_get_remote_device_props *cmd = buf;
+	struct device *dev;
 	uint8_t status;
 	bdaddr_t addr;
-	GSList *l;
 
 	android2bdaddr(cmd->bdaddr, &addr);
 
-	l = g_slist_find_custom(devices, &addr, bdaddr_cmp);
-	if (!l) {
+	dev = find_device(&addr);
+	if (!dev) {
 		status = HAL_STATUS_INVALID;
 		goto failed;
 	}
 
-	get_device_name(l->data);
-	get_device_uuids(l->data);
-	get_device_class(l->data);
-	get_device_type(l->data);
-	get_device_service_rec(l->data);
-	get_device_friendly_name(l->data);
-	get_device_rssi(l->data);
-	get_device_version_info(l->data);
-	get_device_timestamp(l->data);
+	get_remote_device_props(dev);
 
 	status = HAL_STATUS_SUCCESS;
 
@@ -2708,52 +2780,52 @@ failed:
 static void handle_get_remote_device_prop_cmd(const void *buf, uint16_t len)
 {
 	const struct hal_cmd_get_remote_device_prop *cmd = buf;
+	struct device *dev;
 	uint8_t status;
 	bdaddr_t addr;
-	GSList *l;
 
 	android2bdaddr(cmd->bdaddr, &addr);
 
-	l = g_slist_find_custom(devices, &addr, bdaddr_cmp);
-	if (!l) {
+	dev = find_device(&addr);
+	if (!dev) {
 		status = HAL_STATUS_INVALID;
 		goto failed;
 	}
 
 	switch (cmd->type) {
 	case HAL_PROP_DEVICE_NAME:
-		status = get_device_name(l->data);
+		status = get_device_name(dev);
 		break;
 	case HAL_PROP_DEVICE_UUIDS:
-		status = get_device_uuids(l->data);
+		status = get_device_uuids(dev);
 		break;
 	case HAL_PROP_DEVICE_CLASS:
-		status = get_device_class(l->data);
+		status = get_device_class(dev);
 		break;
 	case HAL_PROP_DEVICE_TYPE:
-		status = get_device_type(l->data);
+		status = get_device_type(dev);
 		break;
 	case HAL_PROP_DEVICE_SERVICE_REC:
-		status = get_device_service_rec(l->data);
+		status = get_device_service_rec(dev);
 		break;
 	case HAL_PROP_DEVICE_FRIENDLY_NAME:
-		status = get_device_friendly_name(l->data);
+		status = get_device_friendly_name(dev);
 		break;
 	case HAL_PROP_DEVICE_RSSI:
-		status = get_device_rssi(l->data);
+		status = get_device_rssi(dev);
 		break;
 	case HAL_PROP_DEVICE_VERSION_INFO:
-		status = get_device_version_info(l->data);
+		status = get_device_version_info(dev);
 		break;
 	case HAL_PROP_DEVICE_TIMESTAMP:
-		status = get_device_timestamp(l->data);
+		status = get_device_timestamp(dev);
 		break;
 	default:
 		status = HAL_STATUS_FAILED;
 		break;
 	}
 
-	if (status != HAL_STATUS_SUCCESS && status != HAL_STATUS_DONE)
+	if (status != HAL_STATUS_SUCCESS)
 		error("Failed to get device property (type %u status %u)",
 							cmd->type, status);
 
@@ -2790,9 +2862,9 @@ static uint8_t set_device_version_info(struct device *dev)
 static void handle_set_remote_device_prop_cmd(const void *buf, uint16_t len)
 {
 	const struct hal_cmd_set_remote_device_prop *cmd = buf;
+	struct device *dev;
 	uint8_t status;
 	bdaddr_t addr;
-	GSList *l;
 
 	if (len != sizeof(*cmd) + cmd->len) {
 		error("Invalid set remote device prop cmd (0x%x), terminating",
@@ -2803,25 +2875,25 @@ static void handle_set_remote_device_prop_cmd(const void *buf, uint16_t len)
 
 	android2bdaddr(cmd->bdaddr, &addr);
 
-	l = g_slist_find_custom(devices, &addr, bdaddr_cmp);
-	if (!l) {
+	dev = find_device(&addr);
+	if (!dev) {
 		status = HAL_STATUS_INVALID;
 		goto failed;
 	}
 
 	switch (cmd->type) {
 	case HAL_PROP_DEVICE_FRIENDLY_NAME:
-		status = set_device_friendly_name(l->data, cmd->val, cmd->len);
+		status = set_device_friendly_name(dev, cmd->val, cmd->len);
 		break;
 	case HAL_PROP_DEVICE_VERSION_INFO:
-		status = set_device_version_info(l->data);
+		status = set_device_version_info(dev);
 		break;
 	default:
 		status = HAL_STATUS_FAILED;
 		break;
 	}
 
-	if (status != HAL_STATUS_SUCCESS && status != HAL_STATUS_DONE)
+	if (status != HAL_STATUS_SUCCESS)
 		error("Failed to set device property (type %u status %u)",
 							cmd->type, status);
 
@@ -2845,22 +2917,22 @@ static void handle_start_discovery_cmd(const void *buf, uint16_t len)
 	uint8_t status;
 
 	if (adapter.discovering) {
-		status = HAL_STATUS_DONE;
-		goto failed;
+		status = HAL_STATUS_SUCCESS;
+		goto reply;
 	}
 
 	if (!(adapter.current_settings & MGMT_SETTING_POWERED)) {
 		status = HAL_STATUS_NOT_READY;
-		goto failed;
+		goto reply;
 	}
 
 	if (!start_discovery()) {
 		status = HAL_STATUS_FAILED;
-		goto failed;
+		goto reply;
 	}
 
 	status = HAL_STATUS_SUCCESS;
-failed:
+reply:
 	ipc_send_rsp(HAL_SERVICE_ID_BLUETOOTH, HAL_OP_START_DISCOVERY, status);
 }
 
@@ -2869,23 +2941,23 @@ static void handle_cancel_discovery_cmd(const void *buf, uint16_t len)
 	uint8_t status;
 
 	if (!adapter.discovering) {
-		status = HAL_STATUS_DONE;
-		goto failed;
+		status = HAL_STATUS_SUCCESS;
+		goto reply;
 	}
 
 	if (!(adapter.current_settings & MGMT_SETTING_POWERED)) {
 		status = HAL_STATUS_NOT_READY;
-		goto failed;
+		goto reply;
 	}
 
 	if (!stop_discovery()) {
 		status = HAL_STATUS_FAILED;
-		goto failed;
+		goto reply;
 	}
 
 	status = HAL_STATUS_SUCCESS;
 
-failed:
+reply:
 	ipc_send_rsp(HAL_SERVICE_ID_BLUETOOTH, HAL_OP_CANCEL_DISCOVERY, status);
 }
 

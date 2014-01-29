@@ -1,24 +1,36 @@
 if ANDROID
+android_plugindir = $(abs_top_srcdir)/android/.libs
+
 noinst_PROGRAMS += android/system-emulator
 
 android_system_emulator_SOURCES = android/system-emulator.c \
 					monitor/mainloop.h monitor/mainloop.c
+
+noinst_PROGRAMS += android/bluetoothd-snoop
+
+android_bluetoothd_snoop_SOURCES = android/bluetoothd-snoop.c \
+				monitor/mainloop.h monitor/mainloop.c \
+				src/shared/btsnoop.h src/shared/btsnoop.c
 
 noinst_PROGRAMS += android/bluetoothd
 
 android_bluetoothd_SOURCES = android/main.c \
 				src/log.c \
 				android/hal-msg.h \
+				android/audio-msg.h \
 				android/utils.h \
 				src/sdpd-database.c src/sdpd-server.c \
 				src/sdpd-service.c src/sdpd-request.c \
 				src/glib-helper.h src/glib-helper.c \
 				src/eir.h src/eir.c \
+				src/shared/io.h src/shared/io-glib.c \
+				src/shared/queue.h src/shared/queue.c \
 				src/shared/util.h src/shared/util.c \
 				src/shared/mgmt.h src/shared/mgmt.c \
 				android/bluetooth.h android/bluetooth.c \
 				android/hidhost.h android/hidhost.c \
 				android/ipc.h android/ipc.c \
+				android/audio-ipc.h android/audio-ipc.c \
 				android/avdtp.h android/avdtp.c \
 				android/a2dp.h android/a2dp.c \
 				android/socket.h android/socket.c \
@@ -29,9 +41,9 @@ android_bluetoothd_SOURCES = android/main.c \
 
 android_bluetoothd_LDADD = lib/libbluetooth-internal.la @GLIB_LIBS@
 
-noinst_LTLIBRARIES += android/libhal-internal.la
+plugin_LTLIBRARIES += android/bluetooth.default.la
 
-android_libhal_internal_la_SOURCES = android/hal.h android/hal-bluetooth.c \
+android_bluetooth_default_la_SOURCES = android/hal.h android/hal-bluetooth.c \
 					android/hal-sock.c \
 					android/hal-hidhost.c \
 					android/hal-pan.c \
@@ -51,9 +63,12 @@ android_libhal_internal_la_SOURCES = android/hal.h android/hal-bluetooth.c \
 					android/hardware/hardware.h \
 					android/cutils/properties.h \
 					android/hal-log.h \
-					android/hal-ipc.h android/hal-ipc.c
+					android/hal-ipc.h android/hal-ipc.c \
+					android/hal-utils.h android/hal-utils.c
 
-android_libhal_internal_la_CPPFLAGS = -I$(srcdir)/android
+android_bluetooth_default_la_CFLAGS = $(AM_CFLAGS) -I$(srcdir)/android
+android_bluetooth_default_la_LDFLAGS = $(AM_LDFLAGS) -module -avoid-version \
+					-no-undefined
 
 noinst_PROGRAMS += android/haltest
 
@@ -73,56 +88,105 @@ android_haltest_SOURCES = android/client/haltest.c \
 				android/client/if-hh.c \
 				android/client/if-pan.c \
 				android/client/if-sock.c \
-				android/client/hwmodule.c \
+				android/client/if-audio.c \
+				android/hardware/hardware.c \
 				android/hal-utils.h android/hal-utils.c
 
-android_haltest_LDADD = android/libhal-internal.la
-
 android_haltest_CFLAGS = $(AM_CFLAGS) -I$(srcdir)/android \
-				-DPLATFORM_SDK_VERSION=19
+				-DPLUGINDIR=\""$(android_plugindir)"\"
 
-android_haltest_LDFLAGS = -pthread
+android_haltest_LDFLAGS = -pthread -ldl
 
 noinst_PROGRAMS += android/android-tester
 
 android_android_tester_SOURCES = emulator/btdev.h emulator/btdev.c \
 				emulator/bthost.h emulator/bthost.c \
+				emulator/smp.c \
+				src/shared/io.h src/shared/io-glib.c \
+				src/shared/queue.h src/shared/queue.c \
+				src/shared/util.h src/shared/util.c \
+				src/shared/mgmt.h src/shared/mgmt.c \
+				src/shared/hciemu.h src/shared/hciemu.c \
+				src/shared/tester.h src/shared/tester.c \
+				monitor/rfcomm.h \
+				android/hardware/hardware.c \
+				android/android-tester.c
+
+android_android_tester_CFLAGS = $(AM_CFLAGS) -I$(srcdir)/android \
+				-DPLUGINDIR=\""$(android_plugindir)"\"
+
+android_android_tester_LDADD = lib/libbluetooth-internal.la @GLIB_LIBS@
+
+android_android_tester_LDFLAGS = -pthread -ldl
+
+plugin_LTLIBRARIES += android/audio.a2dp.default.la
+
+noinst_PROGRAMS += android/ipc-tester
+
+android_ipc_tester_SOURCES = emulator/btdev.h emulator/btdev.c \
+				emulator/bthost.h emulator/bthost.c \
+				emulator/smp.c \
+				src/shared/io.h src/shared/io-glib.c \
+				src/shared/queue.h src/shared/queue.c \
 				src/shared/util.h src/shared/util.c \
 				src/shared/mgmt.h src/shared/mgmt.c \
 				src/shared/hciemu.h src/shared/hciemu.c \
 				src/shared/tester.h src/shared/tester.c \
 				android/hal-utils.h android/hal-utils.c \
-				android/client/hwmodule.c android/android-tester.c
+				android/ipc-tester.c
 
-android_android_tester_CFLAGS = $(AM_CFLAGS) -I$(srcdir)/android
+android_ipc_tester_CFLAGS = $(AM_CFLAGS) -I$(srcdir)/android
 
-android_android_tester_LDADD = lib/libbluetooth-internal.la \
-				android/libhal-internal.la @GLIB_LIBS@
+android_ipc_tester_LDADD = lib/libbluetooth-internal.la @GLIB_LIBS@
 
-android_android_tester_LDFLAGS = -pthread
-
-noinst_LTLIBRARIES += android/libaudio-internal.la
-
-android_libaudio_internal_la_SOURCES = android/hal-audio.c \
+android_audio_a2dp_default_la_SOURCES = android/audio-msg.h \
+					android/hal-msg.h \
+					android/hal-audio.c \
 					android/hardware/audio.h \
 					android/hardware/audio_effect.h \
 					android/hardware/hardware.h \
 					android/system/audio.h
 
-android_libaudio_internal_la_CPPFLAGS = -I$(srcdir)/android
+android_audio_a2dp_default_la_CFLAGS = $(AM_CFLAGS) -I$(srcdir)/android
+
+android_audio_a2dp_default_la_LDFLAGS = $(AM_LDFLAGS) -module -avoid-version \
+					-no-undefined -pthread
 
 endif
 
-EXTRA_DIST += android/Android.mk android/hal-ipc-api.txt android/README \
-		android/pics-gap.txt android/pics-hid.txt \
-		android/pics-pan.txt android/pics-did.txt \
-		android/pics-opp.txt android/pics-pbap.txt \
-		android/pixit-did.txt android/pts-did.txt \
-		android/pixit-gap.txt android/pixit-hid.txt \
-		android/pixit-opp.txt android/pixit-pan.txt \
-		android/pixit-pbap.txt android/pts-gap.txt android/pts-hid.txt \
-		android/pts-opp.txt android/pts-pbap.txt \
-		android/audio-ipc-api.txt android/pics-map.txt \
-		android/pixit-map.txt android/pts-map.txt \
-		android/pics-l2cap.txt android/pixit-l2cap.txt \
-		android/pts-l2cap.txt
+EXTRA_DIST += android/Android.mk android/README \
+				android/init.bluetooth.rc \
+				android/hal-ipc-api.txt \
+				android/audio-ipc-api.txt \
+				android/pics-l2cap.txt \
+				android/pics-gap.txt \
+				android/pics-did.txt \
+				android/pics-hid.txt \
+				android/pics-pan.txt \
+				android/pics-opp.txt \
+				android/pics-map.txt \
+				android/pics-pbap.txt \
+				android/pics-a2dp.txt \
+				android/pics-avctp.txt \
+				android/pics-avrcp.txt \
+				android/pixit-l2cap.txt \
+				android/pixit-gap.txt \
+				android/pixit-did.txt \
+				android/pixit-hid.txt \
+				android/pixit-pan.txt \
+				android/pixit-opp.txt \
+				android/pixit-map.txt \
+				android/pixit-pbap.txt \
+				android/pixit-a2dp.txt \
+				android/pixit-avctp.txt \
+				android/pixit-avrcp.txt \
+				android/pts-l2cap.txt \
+				android/pts-gap.txt \
+				android/pts-did.txt \
+				android/pts-hid.txt \
+				android/pts-opp.txt \
+				android/pts-map.txt \
+				android/pts-a2dp.txt \
+				android/pts-avrcp.txt \
+				android/pts-avctp.txt \
+				android/pts-pbap.txt

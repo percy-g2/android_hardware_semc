@@ -52,7 +52,17 @@
 
 #define SVC_HINT_OBEX 0x10
 
+/* Hardcoded MAP stuff needed for MAS SMS Instance.*/
+#define DEFAULT_MAS_INSTANCE	0x00
+
+#define MAP_MSG_TYPE_SMS_GSM	0x02
+#define MAP_MSG_TYPE_SMS_CDMA	0x04
+#define DEFAULT_MAS_MSG_TYPE	(MAP_MSG_TYPE_SMS_GSM | MAP_MSG_TYPE_SMS_CDMA)
+
+
 static bdaddr_t adapter_addr;
+
+static const uint8_t zero_uuid[16] = { 0 };
 
 /* Simple list of RFCOMM server sockets */
 GList *servers = NULL;
@@ -311,6 +321,76 @@ static sdp_record_t *create_pbap_record(uint8_t chan, const char *svc_name)
 	return record;
 }
 
+static sdp_record_t *create_mas_record(uint8_t chan, const char *svc_name)
+{
+	const char *service_name = "MAP MAS SMS";
+	sdp_list_t *svclass_id, *pfseq, *apseq, *root;
+	uuid_t root_uuid, mse_uuid, l2cap_uuid, rfcomm_uuid, obex_uuid;
+	sdp_profile_desc_t profile[1];
+	sdp_list_t *aproto, *proto[3];
+	sdp_data_t *channel;
+	uint8_t minst = DEFAULT_MAS_INSTANCE;
+	uint8_t mtype = DEFAULT_MAS_MSG_TYPE;
+	sdp_record_t *record;
+
+	record = sdp_record_alloc();
+	if (!record)
+		return NULL;
+
+	record->handle =  sdp_next_handle();
+
+	sdp_uuid16_create(&root_uuid, PUBLIC_BROWSE_GROUP);
+	root = sdp_list_append(NULL, &root_uuid);
+	sdp_set_browse_groups(record, root);
+
+	sdp_uuid16_create(&mse_uuid, MAP_MSE_SVCLASS_ID);
+	svclass_id = sdp_list_append(NULL, &mse_uuid);
+	sdp_set_service_classes(record, svclass_id);
+
+	sdp_uuid16_create(&profile[0].uuid, MAP_PROFILE_ID);
+	profile[0].version = 0x0101;
+	pfseq = sdp_list_append(NULL, profile);
+	sdp_set_profile_descs(record, pfseq);
+
+	sdp_attr_add_new(record, SDP_ATTR_MAS_INSTANCE_ID, SDP_UINT8, &minst);
+	sdp_attr_add_new(record, SDP_ATTR_SUPPORTED_MESSAGE_TYPES, SDP_UINT8,
+									&mtype);
+
+	sdp_uuid16_create(&l2cap_uuid, L2CAP_UUID);
+	proto[0] = sdp_list_append(NULL, &l2cap_uuid);
+	apseq = sdp_list_append(NULL, proto[0]);
+
+	sdp_uuid16_create(&rfcomm_uuid, RFCOMM_UUID);
+	proto[1] = sdp_list_append(NULL, &rfcomm_uuid);
+	channel = sdp_data_alloc(SDP_UINT8, &chan);
+	proto[1] = sdp_list_append(proto[1], channel);
+	apseq = sdp_list_append(apseq, proto[1]);
+
+	sdp_uuid16_create(&obex_uuid, OBEX_UUID);
+	proto[2] = sdp_list_append(NULL, &obex_uuid);
+	apseq = sdp_list_append(apseq, proto[2]);
+
+	aproto = sdp_list_append(NULL, apseq);
+	sdp_set_access_protos(record, aproto);
+
+	if (svc_name)
+		service_name = svc_name;
+
+	sdp_set_info_attr(record, service_name, NULL, NULL);
+
+	sdp_data_free(channel);
+	sdp_list_free(proto[0], NULL);
+	sdp_list_free(proto[1], NULL);
+	sdp_list_free(proto[2], NULL);
+	sdp_list_free(apseq, NULL);
+	sdp_list_free(pfseq, NULL);
+	sdp_list_free(aproto, NULL);
+	sdp_list_free(root, NULL);
+	sdp_list_free(svclass_id, NULL);
+
+	return record;
+}
+
 static sdp_record_t *create_spp_record(uint8_t chan, const char *svc_name)
 {
 	const char *service_name = "Serial Port";
@@ -411,9 +491,9 @@ static const struct profile_info {
 			0x80, 0x00, 0x00, 0x80, 0x5F, 0x9B, 0x34, 0xFB
 		},
 		.channel = MAS_DEFAULT_CHANNEL,
-		.svc_hint = 0,
+		.svc_hint = SVC_HINT_OBEX,
 		.sec_level = BT_IO_SEC_MEDIUM,
-		.create_record = NULL
+		.create_record = create_mas_record
 	}, {
 		.uuid = {
 			0x00, 0x00, 0x11, 0x01, 0x00, 0x00, 0x10, 0x00,
@@ -709,38 +789,40 @@ static void accept_cb(GIOChannel *io, GError *err, gpointer user_data)
 		rfsock_acc->rfcomm_watch);
 }
 
-static void handle_listen(const void *buf, uint16_t len)
+static uint8_t rfcomm_listen(int chan, const uint8_t *name, const uint8_t *uuid,
+						uint8_t flags, int *hal_fd)
 {
-	const struct hal_cmd_sock_listen *cmd = buf;
 	const struct profile_info *profile;
 	struct rfcomm_sock *rfsock = NULL;
 	BtIOSecLevel sec_level;
 	GIOChannel *io, *io_stack;
 	GIOCondition cond;
 	GError *err = NULL;
-	int hal_fd = -1;
-	int chan;
 	guint id;
 
 	DBG("");
 
-	profile = get_profile_by_uuid(cmd->uuid);
-	if (!profile) {
-		if (!cmd->channel)
-			goto failed;
+	if (!memcmp(uuid, zero_uuid, sizeof(zero_uuid)) && chan <= 0) {
+		error("Invalid rfcomm listen params");
+		return HAL_STATUS_INVALID;
+	}
 
-		chan = cmd->channel;
+	profile = get_profile_by_uuid(uuid);
+	if (!profile) {
+		if (chan <= 0)
+			return HAL_STATUS_INVALID;
+
 		sec_level = BT_IO_SEC_MEDIUM;
 	} else {
 		chan = profile->channel;
 		sec_level = profile->sec_level;
 	}
 
-	DBG("rfcomm channel %d svc_name %s", chan, cmd->name);
+	DBG("rfcomm channel %d svc_name %s", chan, name);
 
-	rfsock = create_rfsock(-1, &hal_fd);
+	rfsock = create_rfsock(-1, hal_fd);
 	if (!rfsock)
-		goto failed;
+		return HAL_STATUS_FAILED;
 
 	io = bt_io_listen(accept_cb, NULL, rfsock, NULL, &err,
 				BT_IO_OPT_SOURCE_BDADDR, &adapter_addr,
@@ -769,31 +851,56 @@ static void handle_listen(const void *buf, uint16_t len)
 	rfsock->stack_watch = id;
 
 	DBG("real_sock %d fd %d hal_fd %d", rfsock->real_sock, rfsock->fd,
-								hal_fd);
+								*hal_fd);
 
 	if (write(rfsock->fd, &chan, sizeof(chan)) != sizeof(chan)) {
 		error("Error sending RFCOMM channel");
 		goto failed;
 	}
 
-	rfsock->service_handle = sdp_service_register(profile, cmd->name);
+	rfsock->service_handle = sdp_service_register(profile, name);
 
 	servers = g_list_append(servers, rfsock);
+
+	return HAL_STATUS_SUCCESS;
+
+failed:
+
+	cleanup_rfsock(rfsock);
+	close(*hal_fd);
+	return HAL_STATUS_FAILED;
+}
+
+static void handle_listen(const void *buf, uint16_t len)
+{
+	const struct hal_cmd_sock_listen *cmd = buf;
+	uint8_t status;
+	int hal_fd;
+
+	switch (cmd->type) {
+	case HAL_SOCK_RFCOMM:
+		status = rfcomm_listen(cmd->channel, cmd->name, cmd->uuid,
+							cmd->flags, &hal_fd);
+		break;
+	case HAL_SOCK_SCO:
+	case HAL_SOCK_L2CAP:
+		status = HAL_STATUS_UNSUPPORTED;
+		break;
+	default:
+		status = HAL_STATUS_INVALID;
+		break;
+	}
+
+	if (status != HAL_STATUS_SUCCESS)
+		goto failed;
 
 	ipc_send_rsp_full(HAL_SERVICE_ID_SOCK, HAL_OP_SOCK_LISTEN, 0, NULL,
 									hal_fd);
 	close(hal_fd);
-	return;
+	return ;
 
 failed:
-	ipc_send_rsp(HAL_SERVICE_ID_SOCK, HAL_OP_SOCK_LISTEN,
-							HAL_STATUS_FAILED);
-
-	if (rfsock)
-		cleanup_rfsock(rfsock);
-
-	if (hal_fd >= 0)
-		close(hal_fd);
+	ipc_send_rsp(HAL_SERVICE_ID_SOCK, HAL_OP_SOCK_LISTEN, status);
 }
 
 static bool sock_send_connect(struct rfcomm_sock *rfsock, bdaddr_t *bdaddr)
@@ -868,7 +975,7 @@ fail:
 	cleanup_rfsock(rfsock);
 }
 
-static bool do_connect(struct rfcomm_sock *rfsock, int chan)
+static bool do_rfcomm_connect(struct rfcomm_sock *rfsock, int chan)
 {
 	BtIOSecLevel sec_level = BT_IO_SEC_MEDIUM;
 	GIOChannel *io;
@@ -949,44 +1056,82 @@ static void sdp_search_cb(sdp_list_t *recs, int err, gpointer data)
 
 	DBG("Got RFCOMM channel %d", chan);
 
-	if (do_connect(rfsock, chan))
+	if (do_rfcomm_connect(rfsock, chan))
 		return;
 fail:
 	cleanup_rfsock(rfsock);
 }
 
-static void handle_connect(const void *buf, uint16_t len)
+static uint8_t connect_rfcomm(const bdaddr_t *addr, int chan,
+				const uint8_t *uuid, uint8_t flags, int *hal_fd)
 {
-	const struct hal_cmd_sock_connect *cmd = buf;
-	static const uint8_t zero_uuid[16] = { 0 };
 	struct rfcomm_sock *rfsock;
-	uuid_t uuid;
-	int hal_fd = -1;
+	uuid_t uu;
 
-	DBG("");
+	if ((!memcmp(uuid, zero_uuid, sizeof(zero_uuid)) && chan <= 0) ||
+						!bacmp(addr, BDADDR_ANY)) {
+		error("Invalid rfcomm connect params");
+		return HAL_STATUS_INVALID;
+	}
 
-	rfsock = create_rfsock(-1, &hal_fd);
+	rfsock = create_rfsock(-1, hal_fd);
 	if (!rfsock)
-		goto failed;
+		return HAL_STATUS_FAILED;
 
-	android2bdaddr(cmd->bdaddr, &rfsock->dst);
+	bacpy(&rfsock->dst, addr);
 
-	if (!memcmp(cmd->uuid, zero_uuid, sizeof(zero_uuid))) {
-		if (!do_connect(rfsock, cmd->channel))
+	if (!memcmp(uuid, zero_uuid, sizeof(zero_uuid))) {
+		if (!do_rfcomm_connect(rfsock, chan))
 			goto failed;
 	} else {
-		memset(&uuid, 0, sizeof(uuid));
-		uuid.type = SDP_UUID128;
-		memcpy(&uuid.value.uuid128, cmd->uuid, sizeof(uint128_t));
+		memset(&uu, 0, sizeof(uu));
+		uu.type = SDP_UUID128;
+		memcpy(&uu.value.uuid128, uuid, sizeof(uint128_t));
 
-		rfsock->profile = get_profile_by_uuid(cmd->uuid);
+		rfsock->profile = get_profile_by_uuid(uuid);
 
-		if (bt_search_service(&adapter_addr, &rfsock->dst, &uuid,
-					sdp_search_cb, rfsock, NULL) < 0) {
+		if (bt_search_service(&adapter_addr, &rfsock->dst, &uu,
+					sdp_search_cb, rfsock, NULL, 0) < 0) {
 			error("Failed to search SDP records");
 			goto failed;
 		}
 	}
+
+	return HAL_STATUS_SUCCESS;
+
+failed:
+	cleanup_rfsock(rfsock);
+	close(*hal_fd);
+	return HAL_STATUS_FAILED;
+}
+
+static void handle_connect(const void *buf, uint16_t len)
+{
+	const struct hal_cmd_sock_connect *cmd = buf;
+	bdaddr_t bdaddr;
+	uint8_t status;
+	int hal_fd;
+
+	DBG("");
+
+	android2bdaddr(cmd->bdaddr, &bdaddr);
+
+	switch (cmd->type) {
+	case HAL_SOCK_RFCOMM:
+		status = connect_rfcomm(&bdaddr, cmd->channel, cmd->uuid,
+							cmd->flags, &hal_fd);
+		break;
+	case HAL_SOCK_SCO:
+	case HAL_SOCK_L2CAP:
+		status = HAL_STATUS_UNSUPPORTED;
+		break;
+	default:
+		status = HAL_STATUS_INVALID;
+		break;
+	}
+
+	if (status != HAL_STATUS_SUCCESS)
+		goto failed;
 
 	ipc_send_rsp_full(HAL_SERVICE_ID_SOCK, HAL_OP_SOCK_CONNECT, 0, NULL,
 									hal_fd);
@@ -994,14 +1139,8 @@ static void handle_connect(const void *buf, uint16_t len)
 	return;
 
 failed:
-	ipc_send_rsp(HAL_SERVICE_ID_SOCK, HAL_OP_SOCK_CONNECT,
-							HAL_STATUS_FAILED);
+	ipc_send_rsp(HAL_SERVICE_ID_SOCK, HAL_OP_SOCK_CONNECT, status);
 
-	if (rfsock)
-		cleanup_rfsock(rfsock);
-
-	if (hal_fd >= 0)
-		close(hal_fd);
 }
 
 static const struct ipc_handler cmd_handlers[] = {

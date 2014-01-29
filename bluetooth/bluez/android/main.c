@@ -36,6 +36,10 @@
 #include <unistd.h>
 
 #include <sys/signalfd.h>
+#if defined(ANDROID)
+#include <sys/capability.h>
+#include <linux/prctl.h>
+#endif
 
 #include <glib.h>
 
@@ -51,12 +55,6 @@
 #include "ipc.h"
 #include "a2dp.h"
 #include "pan.h"
-
-/* TODO: Consider to remove PLATFORM_SDKVERSION check if requirement
-*  for minimal Android platform version increases. */
-#if defined(ANDROID) && PLATFORM_SDK_VERSION >= 18
-#include <sys/capability.h>
-#endif
 
 #define STARTUP_GRACE_SECONDS 5
 #define SHUTDOWN_GRACE_SECONDS 10
@@ -352,6 +350,18 @@ static bool set_capabilities(void)
 		CAP_TO_MASK(CAP_NET_ADMIN) |
 		CAP_TO_MASK(CAP_NET_BIND_SERVICE);
 	cap.inheritable = 0;
+
+	/* don't clear capabilities when dropping root */
+	if (prctl(PR_SET_KEEPCAPS, 1) < 0) {
+		error("%s: prctl(): %s", __func__,strerror(errno));
+		return false;
+	}
+
+	/* Android bluetooth user UID=1002 */
+	if (setuid(1002) < 0) {
+		error("%s: setuid(): %s", __func__, strerror(errno));
+		return false;
+	}
 
 	/* TODO: Move to cap_set_proc once bionic support it */
 	if (capset(&header, &cap) < 0) {

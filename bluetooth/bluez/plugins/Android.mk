@@ -15,7 +15,7 @@ LOCAL_SRC_FILES:= \
 	wiimote.c \
 
 LOCAL_CFLAGS:= \
-	-DVERSION=\"5.13\" \
+	-DVERSION=\"5.14\" \
 	-DBLUETOOTH_PLUGIN_BUILTIN \
 	-DSTORAGEDIR=\"/data/misc/bluetoothd\" \
 	-Wno-missing-field-initializers \

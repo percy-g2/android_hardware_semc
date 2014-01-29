@@ -738,6 +738,11 @@ static void cmd_change_folder(int argc, char *argv[])
 		return;
 	}
 
+	if (dbus_validate_path(argv[1], NULL) == FALSE) {
+		rl_printf("Not a valid path\n");
+		return;
+	}
+
 	if (check_default_player() == FALSE)
 		return;
 
@@ -1080,6 +1085,7 @@ static void rl_handler(char *input)
 	if (!strlen(input))
 		goto done;
 
+	g_strstrip(input);
 	add_history(input);
 
 	argv = g_strsplit(input, " ", -1);

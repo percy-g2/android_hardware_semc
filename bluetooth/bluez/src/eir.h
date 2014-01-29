@@ -44,11 +44,15 @@ struct eir_data {
 	char *name;
 	uint32_t class;
 	uint16_t appearance;
-	gboolean name_complete;
+	bool name_complete;
 	int8_t tx_power;
 	uint8_t *hash;
 	uint8_t *randomizer;
 	bdaddr_t addr;
+	uint16_t did_vendor;
+	uint16_t did_product;
+	uint16_t did_version;
+	uint16_t did_source;
 };
 
 void eir_data_free(struct eir_data *eir);
