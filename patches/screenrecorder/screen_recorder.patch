@@ -1,0 +1,172 @@
+diff --git a/frameworks/base/core/java/android/provider/Settings.java b/frameworks/base/core/java/android/provider/Settings.java
+index e266209..76b497e 100644
+--- a/frameworks/base/core/java/android/provider/Settings.java
++++ b/frameworks/base/core/java/android/provider/Settings.java
+@@ -2748,6 +2748,18 @@ public final class Settings {
+         public static final String POINTER_SPEED = "pointer_speed";
+ 
+         /**
++         * Width and height of output vide expressed in WxH
++         * @hide
++         */
++        public static final String SCREEN_RECORDER_OUTPUT_DIMENSIONS = "screen_recorder_output_dimensions";
++
++        /**
++         * Screen recorder framerate in bits per second
++         * @hide
++         */
++        public static final String SCREEN_RECORDER_BITRATE = "screen_recorder_bitrate";
++
++        /**
+          * I am the lolrus.
+          * <p>
+          * Nonzero values indicate that the user has a bukkit.
+@@ -3234,6 +3246,12 @@ public final class Settings {
+         public static final String POWER_MENU_PROFILES_ENABLED = "power_menu_profiles_enabled";
+ 
+         /**
++         * Whether power menu screen record is enabled
++         * @hide
++         */
++        public static final String POWER_MENU_SCREENRECORD_ENABLED = "power_menu_screenrecord_enabled";
++
++        /**
+          * Enable Stylus Gestures
+          *
+          * @hide
+diff --git a/frameworks/base/core/res/AndroidManifest.xml b/frameworks/base/core/res/AndroidManifest.xml
+index 7eb4472..16c94a9 100644
+--- a/frameworks/base/core/res/AndroidManifest.xml
++++ b/frameworks/base/core/res/AndroidManifest.xml
+@@ -2545,6 +2545,13 @@
+         android:description="@string/permdesc_accessNetworkConditions"
+         android:protectionLevel="signature|system" />
+ 
++    <!-- Allows an application to record the screen.
++         @hide This is not a third-party API (intended for system apps). -->
++    <permission android:name="android.permission.RECORD_SCREEN"
++        android:label="@string/permlab_recordScreen"
++        android:description="@string/permdesc_recordScreen"
++        android:protectionLevel="signature|system" />
++
+     <!-- The system process is explicitly the only one allowed to launch the
+          confirmation UI for full backup/restore -->
+     <uses-permission android:name="android.permission.CONFIRM_FULL_BACKUP"/>
+diff --git a/frameworks/base/core/res/res/values/symbols.xml b/frameworks/base/core/res/res/values/symbols.xml
+index ac294c6..818829a 100644
+--- a/frameworks/base/core/res/res/values/symbols.xml
++++ b/frameworks/base/core/res/res/values/symbols.xml
+@@ -1804,6 +1804,7 @@
+ 
+   <!-- Power menu -->
+   <java-symbol type="string" name="global_action_screenshot" />
++  <java-symbol type="string" name="global_action_screen_record" />
+   <java-symbol type="string" name="global_action_choose_profile" />
+   <java-symbol type="string" name="global_action_reboot" />
+   <java-symbol type="string" name="global_actions_toggle_expanded_desktop_mode" />
+@@ -1815,6 +1816,7 @@
+   <java-symbol type="array" name="shutdown_reboot_options" />
+   <java-symbol type="array" name="shutdown_reboot_actions" />
+   <java-symbol type="drawable" name="ic_lock_screenshot" />
++  <java-symbol type="drawable" name="ic_lock_screen_record" />
+   <java-symbol type="drawable" name="ic_lock_reboot" />
+   <java-symbol type="drawable" name="ic_lock_profile" />
+   <java-symbol type="drawable" name="ic_lock_expanded_desktop" />
+diff --git a/frameworks/base/media/jni/Android.mk b/frameworks/base/media/jni/Android.mk
+index 2fb316d..6807633 100644
+--- a/frameworks/base/media/jni/Android.mk
++++ b/frameworks/base/media/jni/Android.mk
+@@ -85,4 +85,5 @@ include $(BUILD_SHARED_LIBRARY)
+ 
+ # build libsoundpool.so
+ # build libaudioeffect_jni.so
++# build libscreenrecorder.so
+ include $(call all-makefiles-under,$(LOCAL_PATH))
+diff --git a/frameworks/base/core/res/res/values/cm_strings.xml b/frameworks/base/core/res/res/values/cm_strings.xml
+index 2828448..c10c22e 100644
+--- a/frameworks/base/core/res/res/values/cm_strings.xml
++++ b/frameworks/base/core/res/res/values/cm_strings.xml
+@@ -98,6 +98,9 @@
+     <!-- Label for item that reboots the device in phone options dialog -->
+     <string name="global_action_reboot">Reboot</string>
+ 
++    <!-- label for screen record item in phone options dialog -->
++    <string name="global_action_screen_record">Screen record</string>
++
+     <!-- Label for item that opens the profile choosing dialog -->
+     <string name="global_action_choose_profile">Profile</string>
+ 
+@@ -180,6 +183,12 @@
+     <string name="perf_profile_bal">Balanced</string>
+     <string name="perf_profile_perf">Performance</string>
+ 
++    <!-- Title of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
++    <string name="permlab_recordScreen">Record content being displayed</string>
++    <!-- Description of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
++    <string name="permdesc_recordScreen">Allows the app to
++        record the users screen.</string>
++
+     <string name="permlab_interceptSmsSent">intercept outgoing SMS</string>
+     <!-- Description of an application permission, listed so the user can choose whether they want to allow the application to do this. -->
+     <string name="permdesc_interceptSmsSent">Allows the app to
+diff --git a/frameworks/base/policy/src/com/android/internal/policy/impl/GlobalActions.java b/frameworks/base/policy/src/com/android/internal/policy/impl/GlobalActions.java
+index 38dbf44..ed66462 100644
+--- a/frameworks/base/policy/src/com/android/internal/policy/impl/GlobalActions.java
++++ b/frameworks/base/policy/src/com/android/internal/policy/impl/GlobalActions.java
+@@ -37,6 +37,7 @@ import android.content.IntentFilter;
+ import android.content.pm.UserInfo;
+ import android.database.ContentObserver;
+ import android.graphics.drawable.Drawable;
++import android.Manifest;
+ import android.media.AudioManager;
+ import android.net.ConnectivityManager;
+ import android.os.Bundle;
+@@ -369,7 +370,7 @@ class GlobalActions implements DialogInterface.OnDismissListener, DialogInterfac
+         // next: screenshot
+         // only shown if enabled, disabled by default
+         boolean showScreenshot = Settings.System.getIntForUser(cr,
+-                Settings.System.POWER_MENU_SCREENSHOT_ENABLED, 0, UserHandle.USER_CURRENT) == 1;
++                Settings.System.POWER_MENU_SCREENSHOT_ENABLED, 1, UserHandle.USER_CURRENT) == 1;
+         if (showScreenshot) {
+             mItems.add(
+                 new SinglePressAction(R.drawable.ic_lock_screenshot, R.string.global_action_screenshot) {
+@@ -399,6 +400,27 @@ class GlobalActions implements DialogInterface.OnDismissListener, DialogInterfac
+             mItems.add(mExpandDesktopModeOn);
+         }
+ 
++        // next: screenrecord
++        // only shown if enabled, disabled by default
++        boolean showScreenrecord = Settings.System.getIntForUser(cr,
++                Settings.System.POWER_MENU_SCREENRECORD_ENABLED, 1, UserHandle.USER_CURRENT) == 1;
++        if (showScreenrecord) {
++            mItems.add(
++                new SinglePressAction(R.drawable.ic_lock_screen_record, R.string.global_action_screen_record) {
++                    public void onPress() {
++                        toggleScreenRecord();
++                    }
++
++                    public boolean showDuringKeyguard() {
++                        return true;
++                    }
++
++                    public boolean showBeforeProvisioning() {
++                        return true;
++                    }
++                });
++        }
++
+         // next: airplane mode
+         boolean showAirplaneMode = Settings.System.getIntForUser(cr,
+                 Settings.System.POWER_MENU_AIRPLANE_ENABLED, 1, UserHandle.USER_CURRENT) == 1;
+@@ -664,6 +686,11 @@ class GlobalActions implements DialogInterface.OnDismissListener, DialogInterfac
+         }
+     }
+ 
++    private void toggleScreenRecord() {
++        final Intent recordIntent = new Intent("org.chameleonos.action.NOTIFY_RECORD_SERVICE");
++        mContext.sendBroadcast(recordIntent, Manifest.permission.RECORD_SCREEN);
++    }
++
+     private void prepareDialog() {
+         refreshSilentMode();
+         mAirplaneModeOn.updateState(mAirplaneState);

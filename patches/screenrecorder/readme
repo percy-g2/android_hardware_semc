@@ -1,0 +1,13 @@
+cd to the root of the cm11 and apply a patches:
+
+    git apply hardware/semc/patches/screenrecorder/screen_recorder_apps.patch
+    patch -p1 < hardware/semc/patches/screenrecorder/screen_recorder.patch
+    git apply hardware/semc/patches/screenrecorder/screen_recorder_untracked.patch
+    patch -p1 < hardware/semc/patches/screenrecorder/screen_recorder_packages_settings.patch
+
+
+than add a lines in your board makefile:
+# Screen recorder
+PRODUCT_PACKAGES += \
+    ScreenRecorder \
+    libscreenrecorder

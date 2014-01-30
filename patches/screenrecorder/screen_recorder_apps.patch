@@ -1,0 +1,1568 @@
+diff --git a/packages/apps/ScreenRecorder/Android.mk b/packages/apps/ScreenRecorder/Android.mk
+new file mode 100644
+index 0000000..9a33ade
+--- /dev/null
++++ b/packages/apps/ScreenRecorder/Android.mk
+@@ -0,0 +1,17 @@
++LOCAL_PATH:= $(call my-dir)
++include $(CLEAR_VARS)
++
++LOCAL_MODULE_TAGS := optional
++
++LOCAL_SRC_FILES := $(call all-java-files-under, src)
++
++LOCAL_PACKAGE_NAME := ScreenRecorder
++LOCAL_CERTIFICATE := platform
++LOCAL_PRIVILEGED_MODULE := true
++
++LOCAL_PROGUARD_FLAG_FILES := proguard.flags
++
++include $(BUILD_PACKAGE)
++
++# Use the folloing include to make our test apk.
++include $(call all-makefiles-under,$(LOCAL_PATH))
+diff --git a/packages/apps/ScreenRecorder/AndroidManifest.xml b/packages/apps/ScreenRecorder/AndroidManifest.xml
+new file mode 100644
+index 0000000..53c2a53
+--- /dev/null
++++ b/packages/apps/ScreenRecorder/AndroidManifest.xml
+@@ -0,0 +1,26 @@
++<?xml version="1.0" encoding="utf-8"?>
++<manifest xmlns:android="http://schemas.android.com/apk/res/android"
++          package="org.chameleonos.screenrecorder"
++          android:versionCode="1"
++          android:versionName="1.0"
++          android:sharedUserId="android.uid.system">
++    <uses-sdk android:minSdkVersion="18"/>
++
++    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
++    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
++    <uses-permission android:name="android.permission.RECORD_SCREEN"/>
++
++    <application android:label="@string/app_name" android:icon="@drawable/ic_launcher">
++        <service android:name="org.chameleonos.screenrecorder.ScreenRecorderService"
++                 android:exported="false"
++                 android:permission="android.permission.RECORD_SCREEN"/>
++
++        <receiver android:name=".ScreenRecordReceiver"
++                  android:permission="android.permission.RECORD_SCREEN">
++            <intent-filter>
++                <action android:name="org.chameleonos.action.NOTIFY_RECORD_SERVICE"/>
++                <action android:name="org.chameleonos.action.NOTIFY_DELETE_SCREENRECORD"/>
++            </intent-filter>
++        </receiver>
++    </application>
++</manifest>
+diff --git a/packages/apps/ScreenRecorder/README.md b/packages/apps/ScreenRecorder/README.md
+new file mode 100644
+index 0000000..6b40f30
+--- /dev/null
++++ b/packages/apps/ScreenRecorder/README.md
+@@ -0,0 +1,2 @@
++A simple system app that contains a service which interfaces with the ScreenRecorder
++class to record video of the device display.
+diff --git a/packages/apps/ScreenRecorder/proguard.flags b/packages/apps/ScreenRecorder/proguard.flags
+new file mode 100644
+index 0000000..1f730a0
+--- /dev/null
++++ b/packages/apps/ScreenRecorder/proguard.flags
+@@ -0,0 +1,5 @@
++# Keep all Fragments in this package, which are used by reflection.
++-keep class org.chameleonos.screenrecorder.*
++
++# Keep click responders
++
+diff --git a/packages/apps/ScreenRecorder/res/drawable-hdpi/ic_launcher.png b/packages/apps/ScreenRecorder/res/drawable-hdpi/ic_launcher.png
+new file mode 100644
+index 0000000000000000000000000000000000000000..243944f0c123290a1c2f7dbe236c655d56afedb7
+GIT binary patch
+literal 2052
+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
+
+literal 0
+HcmV?d00001
+
+diff --git a/packages/apps/ScreenRecorder/res/drawable-hdpi/ic_notify_screen_recorder.png b/packages/apps/ScreenRecorder/res/drawable-hdpi/ic_notify_screen_recorder.png
+new file mode 100644
+index 0000000000000000000000000000000000000000..61aba4d23bbb49618f913e6e72bf2ff9ee7858d9
+GIT binary patch
+literal 969
+zcmV;)12+7LP)<h;3K|Lk000e1NJLTq001Na001Ni1^@s6;Q*MJ00006VoOIv0RI60
+z0RN!9r;`8x1Aa+FK~z}7)tF6-990yCpHux+Nve|$qbqSEvk^Z))J0r~5(2u;zX&d}
+zQpg_=ap@264+LZux^-n#Oco+C!Z5oLoL=<kWV)-ny1I^=_sX@&WU9I=pcgJxef!*7
+z?|IK>75pEEyKl9>s;b(u)(}{t+Z5;k#nI7GKg+W2Xf!$n9JmCOx_2{MHhG3M0P-^M
+zA+V!46tGNUOJEM10#l#>&VUo(JK&L-mF|w2ZEdm_-F?s9OK(0(cmKiN->hT$ZcRY1
+znAy9)&%p0MB6j*>W&m6fL#51Filyg)SAjQx-^5;XK+>jbX60lu>F@09oB^K!Ujsd$
+z5*QP}03_4eN-}Q&UuchQ!;neyGRv|7@E0&Kv*`tAPS+GW5_7d2C%GtM0S1FXkn3#V
+zf>)!nI@<yYTFu1fCV;Hwv+6S>(=F>Bx;9G9bX$fTSVVG31n^(k+ueumK0GJ0TNDJ<
+z#(>NWGYcm#A}9Z6ue;xL_xr#;u<!2o-Tmg;xeJ-Q0P<~37Mm_nD2L2_7x)Ue4ZNUv
+zTWfctGP4qxT47%oPyt*99_#lF;GW9I`WWiJ8<GE69dk7W1kjOx+yX{gI{`k|Jki<+
+zxFwe60#%vWyp__S>|09H4)9VGF+ZBw$1>$>zz2~`FmqB@`MQ7>3fq~YZ=$OKyYBv;
+z<aVP7jb*~#)=aht^~%gD;6W5IyTG@a0Z<M+Ftb%u)8=ggx)v2rfNy}kr^xR~CX}1y
+zTFTfOP#QvBIqD3!1AGdMBe}8G?nov?Ssz%qyS3#*O9ASIOl)R<0{7hgOLda~`(}0!
+z$q*^Bl0SJHfO<Np6S8>3)&X$vq)Z<%G*biDi^|bfChJJUa)aU;3bS9tP7^?J#cn!^
+z=s8tefO^0(s!vTu=o0#EG-z=vVpUb0ZUAU5lhu0ds_WD_keS*0d7gLEG!2b>*WGh7
+zn@PEj00cI2;BB?B-8#?fHlY1#k|dv`Y5GxAo4V?mLN#AS^=qlM%ld!WCPQ&+F+9hl
+zPkSSNEazUd<wJR#siSB)FO;jbYcJ39!pw@c0R0L)l!nC`6Hl5+1auBO8jr`n03075
+zxAw8&b>JN}U(YG?x(e@gIq@v&ooD*+@CWeIbUOV$%d$-pYb}61&4IgLDvF|acz8Id
+rs_MGd`tE*3*Z<~+t7i)AS&qK}Hin^D^%_NO00000NkvXXu0mjf38Kfz
+
+literal 0
+HcmV?d00001
+
+diff --git a/packages/apps/ScreenRecorder/res/drawable-hdpi/ic_notify_screen_recorder_error.png b/packages/apps/ScreenRecorder/res/drawable-hdpi/ic_notify_screen_recorder_error.png
+new file mode 100644
+index 0000000000000000000000000000000000000000..634d00e490d8d19c7f2f58037c7c7b4006dc01d5
+GIT binary patch
+literal 970
+zcmV;*12z1KP)<h;3K|Lk000e1NJLTq001Na001Ni1^@s6;Q*MJ00006VoOIv0RI60
+z0RN!9r;`8x1Aj?GK~z}7)tJ4D9aR{IpLg!ZOtQ0^8&(rUQ;0TxhM*QIXhaLGZEQra
+zu~1?mvfzJ^E+J@Xn>t0hw820OC?aUFV6nmM7AtOY@9dpBcV3&{z;W1*nZ2{12ZlR$
+z&N(yB`Mn?Koq_*jbN7Yjmu1;_thEG-beaG?Am7;77^Z33AB{#kfCDFhLg#K~vo_DL
+z79h_79{{U5mIan-*bLYOc7QRE1CM~efZM=5Gb`L3Gh5hX=iL2<yBFTR74Ck=-Ct>9
+z`hG*87tHJ};Ah}I5J{b(l!<{QDOAXug;aVRcoDb&{3i9<18FsVGb^^Yw}-2%tB-)o
+zz)fHPl!7q<Rv@Xa%{As#;F{*xA_|#SUZiOn1AhbCW;Q<Lp5xlWHl$o5$B7P$Sb#W=
+zt8u-9(!xGIvJ%{@w<u7xs)^L>?USF(-Oub3J=XA9%@vaAX7%v_!27^0cYl75dlWj7
+zMHO;j8jOnqz)+<ga20q7_|n}6HPcxT1m%%|%nUQD?mP{gyl$>bz_U942zc7e!v3ku
+zodemTCJRj$DU_+Qt-C(~tO0)j-wFEL+T6Kd8ijpRpd2^}JgoW7SHM}|ci?N_PvAXw
+z|2!BI3#9DAsY9TDg}u8!B_Ncg``X_C)}$WFK`~I8*=|=rsUpP$W5D&Ge@T5y`u`;G
+zabU8jtFR9pGf_SQ_!M}(2D}p}6anA3`zYA=CS3zXK;iByz-P6b@{CLq`pGHaia_S-
+z?+oaaOg0BT1YWE4-v-VB4{Fyx0WK=s<1T>`W$Fa@evke)fuH0%^>$hQHI?rzUJnVT
+z)JAztN_mTbcvo}muz5{^2Kvp+>{82W^E~jjB5)9FM+=#(rxnhRPysJ1k9iYSn*xP9
+zcH5Q*&ndeC8UVB4HK<Lis)S(|1zK2&SXq`kM*!MYP&9h&YU<P(keb;$S(f#aB&iDd
+zzPo2;HqqjG0;tr;l(Sa!tbSKO5wH?P(OQxuUj%zoUo}&;o6mzXrAiei)j#V}p)g{W
+z_c7@~Z^RGf+|#anD655h8G!f!wRrVA$g(Uqv%D*yUx6RB!n~%$UPlyw?gIC=wzhr&
+z*xcOg>|?{rz#G5_cubksweg;o6HkKLd7_f!0dRLb9{-T0X>nZNiv~JkcR!Km`Cxs0
+sJub`gw5|=^eM!In%@0?{3U-|BANi%10`PHqO8@`>07*qoM6N<$f|BLStpET3
+
+literal 0
+HcmV?d00001
+
+diff --git a/packages/apps/ScreenRecorder/res/drawable-hdpi/ic_show_touch_disabled.png b/packages/apps/ScreenRecorder/res/drawable-hdpi/ic_show_touch_disabled.png
+new file mode 100644
+index 0000000000000000000000000000000000000000..d698cb5ad94a7783e0446984f03225570f2ebd08
+GIT binary patch
+literal 1401
+zcmV-<1%~>GP)<h;3K|Lk000e1NJLTq001xm001xu1^@s6R|5Hm00006VoOIv00000
+z008+zyMF)x1ujWMK~!ko?V0&+8&wd;KeK*bJ8ja^0zFXa0WDCfwn*g^5&|J1!Ouwi
+zub>toA&!E=A@x3_6!lPxLK~A1+p`{i@GQJIySB4&3_oO~RW`f(-ka|n-<kIe+p;a&
+zGI6m^XZ^D*`yVT;TKs%r0lRjs_+7g_k+r3&!V*INzS|W<QeYN%3D^tl0P286Yjl7W
+z;CJ9U@E6dL5G?nar0LcJSfjk^e&8^0&;clrMDyCfI_6gmSOOkkc3bN8#lg9^1b~?#
+zBA99ecn{d=md2Gb;0|Ut5m_Ekd>8P70|v+<&nyF9N(kAOcp$fosfvflhmm!=z#qW(
+z62fZX_*M&<n~Ue$0le*?>Ji8btgbG~?CjXykPU=R0-Od;d8in01Gpt2w2DG(Sorz>
+zyMY&h6H#dWipV9Y)h6QsXBYwA0FL<MHt-d&lqcaPC|5|5-N5^iH*O;`Pp@ZEuU7*w
+zkgR7S%Rd1wNC-M%DsBKD0CNuHM+xD&nSmLSB!%OWF(y9Y%J+arz<CKl%ea3NwA=>H
+zdp>2rIa56*BGB!Yjx7b?NxNsj^501aSrxh)8V3EfkPy1SH^861=4tD6=A_Zs7ywhv
+zllG*$Q-S%MWrihb)vBG(DIu%?Ke-ngB+09$DrMus5Q{to9P&pC62e34^-5zg8n@G_
+zwh`5a%oBgn6&&S}d!~BVYsT}y6$xQ!Yyd8=<=;pM^ZnA36*q46dS2k(0uH$1G19yO
+zXQp~jLioYVpxs8A&2{rhnu6*@LOAYq<_z%l$PgOnA`kleZ}V<)kkU*wU#wxOpE=Fe
+z9e_kv;?L^9F;o2%)l{0zbs;5b+6U2W8t{vcKQvYj<js^@vg@&b-?EIN!r~z_gUH7o
+zCW%}6E^x~W-3`CLzXp)VC#E`6luweTSf6=r`g}c8JzJDRWg)c32R;Opl3w0hi<hGU
+zbjg)%JMG5JTmm%x`{U95&&8%qz$^n6U7!6$1X2bdH}|8mf@NlqWw{bP;G%@EP)0uP
+zp=Ds+R9Aqrz$sI`4y+6+<{s~w>H`N5#-dT{cK7<nJ)pQb>vj<lfal!$mnDRSacNXS
+zxayv&15b~rDXVUP;0!mS4v5UU2YTM>uK(oUWIhLEm^~g=ABy<iL!%44GoprcT$h^f
+zIYt(;MwE;?#FF)Be3hMD&BLl@s<k2DHQL!V#{tmtk88dKER$#d;dhZ;6#(qc8OHC+
+zWF@LAt#Jz31K<lFi~IZnIqHiGun)MrK>&NB@kczQisUiyIUo|kld*as3E{DX(6S+2
+zpevAD@R@P?p@I40@dpat$NDTu2v3UUPKG2IWt$0GULK73nyH=~oxzfWeBBjaL)%5`
+zt<k3-PZFv~qmd4rK4icNQ=J>eL|(b~d4m=M5L2zxpH~9_sppSGKpMciraI>pdflGd
+z_rPx!<eo&;d_z)oR}u<3P5hMMBjApyw*2ra0cL!wczEEvC<YLw37}q}JQ1rLjY3Nz
+zPg}{pJef8Cab=Ssy$>T4j|-qg{nyk&NGgCX`)kt%P#XilFomUnOr{z_<5;^400m*y
+zV*+flRnm)cMoMyG>HtQC&>%b6h-9vOJXy7nS;ZE56st`Qz&+rKZ#Fg)hQW7SSNzzr
+z67nkNnECw-{iE?$e6DN*if7(}-^x$?w)_{G5x|bq{{^Pz3MP?<dw!{3S0#ksCKY>=
+zI$e$r$m)p9A=2<8j5cOVlBQZV=0BH>9Jf#MXntF^Ws~wZTarkYN4j;100000NkvXX
+Hu0mjf8L*Z|
+
+literal 0
+HcmV?d00001
+
+diff --git a/packages/apps/ScreenRecorder/res/drawable-hdpi/ic_show_touch_enabled.png b/packages/apps/ScreenRecorder/res/drawable-hdpi/ic_show_touch_enabled.png
+new file mode 100644
+index 0000000000000000000000000000000000000000..a77b1d902b6c7fd3c0582409ba724e95388216f5
+GIT binary patch
+literal 1470
+zcmV;v1ws0WP)<h;3K|Lk000e1NJLTq001xm001xu1^@s6R|5Hm00006VoOIv00000
+z008+zyMF)x1#?M6K~!ko?U`+elvNbRe`n^-?5nzNmS~wtN|_Q7Nm2AEDSPol5J@Q}
+z5@CIiz6J%65*5^kK2*|+nPEiBLXj0kFNj2$WRSYJl!?)cm8O#0?97?x^kL7~v*SF^
+z&d$zm276%H*=O%P_kZp=_y0f79hkI9o3y5z6^my+E0@n=z^b*M_xDTUoWa4StSyZK
+zmJo(Mmr7YgrUDlLtAItoET99h*tEZZpMh_It-ulBq=XPvvL^Zb_y;fyyz14!GT=I3
+z4p0CxKydJpPs{pm^=ECsLEv-DdL@_JU+sHb0x&Z~1XJw-o&#nBoes7YC<7m0_7);P
+z#r#LWJm3!CCVy7&|DOPU0q&I$3geQ2%FdW-#!F<2gEin3Z~%BjLiqjkoa4ult}bfr
+ztf|fd9`~Ty9ftvH7#!@Ajt;9g8#0R03BY>bJ_l{UHlSBRI8>{|(#p^Oz8JU@Sm7Je
+z20V+%Cdp>4DH(8v$pVjhy#xFSJOF$zA=nrxH%lfnAJ`PjMlT{y5=D{Za$~1PQ+?1>
+z_nGQfruwF-wvPi9cbjUDuhD0!D*-HuuqbLg08_o&!GB|_FPLgRjr+&4S*F@)s#{ET
+zkE!lA)#XXTSg+%SruwPxN{^|Y(`@iHf|zNl@A{e_S+O`LZC)nHnW^T0wZIgoyeA}t
+zqd@8*ZB(@@J|%=Bz*9gGm`*0M&QwFvypZI~R2Kj@INNNO5O!M>A(>1vBMi-(?NmD*
+zXo+$DF<`F)OlOu5c9`lXz|Fu?;3Wy+hf%SRscr@?2ihfsh2Az$%?eg5LM~SkxQ)QI
+zK;Abe6BDwM@9Jj~!Uijsp;SUzThH((`8-xA1VY&7l)Y0zSU+L_@qWZq4*-KMP;Xng
+zjAXO51+G+@hR6<Y6*QqV&3|%00kfr&%MH}hjnhG>t^@7|vJ%4Lx-(#^8-QCK%rf9u
+zO5L9ayy0i1)tk1Rz)_!%gPsXo@1KjnAHb^0xk@-I-N48GXsd+qOm)CXT78Kt<1S!;
+z1RnO*;vNT|busF3q0?A5DqdFIz-sS_X1EGJU;7{km=%G&z@@;FGy<sxw%uuLZCYdJ
+zl()xJcbV!fqoB;y?*B_uosq^~rn=5lcbn=vb<wDmN{e06OI`-l7=wu5CD94IA|bq2
+zCyk1P@EXwT8Cg8St{(GjwmHL%paUZ3JN=ct)je~_zfANHP{gdS-t@+Lr#?Rm8%NNP
+z6COYdaA7?{*6sBi0e`3LWT!i=Fw1DI&DWT2sx2wO7kpd*y6OqwkPpuLi$;=NdHM}Y
+zWL^US%=auSupnjJuf9<M_^}=({sOoQ7?cnWr#N2j=OhDM1-v-Q04{Uz;)=UBVO+oC
+z$w&y_)f0e82>nUQ8?!~8S_7`A>xE{xzeTYUy(VQnlMoIj`OYLYRaJ*|xW|D3iHV>A
+zEoqcHjN6BRJRB3b%6X`{-Y`5hHYU?h@0-t0i`_KfEyqezy(o=|yxCg<-00<3v8<`K
+zH3Frv0EU#edhS%<X;YnRs@WQ>l{3}(z+>KWRO9Gu1W0Hwfc6@FRORYq8}Om29tM8%
+zOw9!5`e8L^pX#2hZ6X8ctSX_3mE7lT{&&&A<zg3GNloR129O)!MkA{7AJtLHtrK|$
+z+Qu+9DFZDN89+;u1DNm(2+cKV6icH47-xx%rG(`F96;IUN|VY*s+4)$1K0t)3Y>IN
+zYZQ2gzua#IzMhc7SoICfx!&roabYXexn`@6eHrMf+)Rx7H#8#zwgR}_!L`O-LMjS9
+z=%5FH*CmAan?+wuxtJaH#YM3=1(7+3bOVOjG0YB2K7Xp7_lEz(Mss659=F?*Hfaso
+YKQN4@JK8pApa1{>07*qoM6N<$g64m<`v3p{
+
+literal 0
+HcmV?d00001
+
+diff --git a/packages/apps/ScreenRecorder/res/drawable-hdpi/ic_stop_recording.png b/packages/apps/ScreenRecorder/res/drawable-hdpi/ic_stop_recording.png
+new file mode 100644
+index 0000000000000000000000000000000000000000..f70881ab050463083f2c9c7c163ab08957b28660
+GIT binary patch
+literal 366
+zcmeAS@N?(olHy`uVBq!ia0vp^1|ZDA1|-9oezpTCwj^(N7a$D;Kb?2iGcYhJd%8G=
+zWZZi@)7FpKP{8eePLIf|00&<`2R#A5gOWR0#W~bDRE0!tFE2>xn(LvkcCYl3ip`h4
+zd;RzLoR%XlC*X8O>b10wW@6fsDGXu<&boYbRhXA#xVex?ZzIFIM)d?<9c}h{2D=8?
+z52<O#_qi&DGxGmqy}?u-*Evh3@!I6?vx0uTS?zElhi~3b-46k)uCQ9pZAeexulYUk
+zmvgW{MD?@WN7lQT<cd$`am}92{CO+Kf!w@JKhJBI`s$}0J~Od_MMZ&;)5C#DXaWjz
+z-Q1FO2O8gXS7$9cUKGZvba#5$Y~%GazFtf2tmSrcd>~t~__g2~u5A68Kd&X<c*=5Y
+z%M3H0>q)naFC<A_e!{(fQ~p%_HwlydISh;I7)rf8*YAz$n*$0qPgg&ebxsLQ0K}h-
+AbN~PV
+
+literal 0
+HcmV?d00001
+
+diff --git a/packages/apps/ScreenRecorder/res/drawable-mdpi/ic_launcher.png b/packages/apps/ScreenRecorder/res/drawable-mdpi/ic_launcher.png
+new file mode 100644
+index 0000000000000000000000000000000000000000..29d83c9ccf9604028c40c73b9c13fa0d443526fa
+GIT binary patch
+literal 1155
+zcmV-}1bq96P)<h;3K|Lk000e1NJLTq001xm001xu1^@s6R|5Hm00006VoOIv0RI60
+z0RN!9r;`8x1UN}VK~!ko?U}o8990y?f9HDFyN-<$CkRA~C=gPRP*4N~1=JB8N<l#t
+zMWRhhNkfq~5{)||(!hT}njlahjoqb21PMrB*Is*eymKh{u6(lc`Z4Pr3$aHU&DGp_
+zobR0PJnkKs%UtI2{}p#{<e9_7>MCw#dEC<F1hjw(@X=_LQc9TF2=Fjh?Z3vWlu`vy
+zRTU|vW&i|Bz6iVrTmmitYrrDV0am2=E-=)&ukjx67tjNKDvIKlZnx`A)90eQf8p*=
+z+`aGa10AKi58b_R_dVa2q2{;Tz31+Ky8CbLe%IY!uS>61UFraD0iVd~Tk>WCMmnRh
+z$>RBXzON0u0DK7CclXC;R?QTEnc?ncW)8e8+S~>1OF@7Ioh#8PiArr9!vORu@DXrc
+z&&?KqqzmlGlH0%!z}Hg9b>#SRGjn%0DQKEcQubHiS^!KF0J4Rb6^Ip3Dcd~9xIjA>
+zjUpX07xx4x1uq_3QVjs3V6k?v_(a+rk^xtMGJv2709m7Ld80i=ff@x$(G-B}{ti$G
+zkR4*_iLVJY;arm**cGQ2LNFeyRT!JgfxQ@GX68X0a&@8e;&`2K_cwu$fe$qG9q^Tz
+zZG>8q1G^(n44cYAS;`Q|7V5;Oz~?G(S>6V2xcg^jb|+YTpl4fk(`cFkK&4bV07mX^
+z?tUG(J*Iq?HQ=_pUsnv7yjO@y3rz#)hcuYM+*F}EtO(xJy*Um#z}^9MWaa>ptk(%S
+z{YseM1m4xL8LnT^y{LyeSJ(Q}#=wd!pDou0R>S;5Gy74&{SdgU>#LyvrqJLu4q%{W
+zZbv{$_4gUXRd;_UkHd34pj5yw3QX@T0PM*1BPp{5JObX={AD$I<MK$<iEYWC(Ml}2
+zpxm9i&28XIt-K}{LEW<*t`&-dW&nh0x)!KoX69yg54Z(9JK)i0z%4Vorxu&gLJS+D
+zQ0RGvQocRbI^S{k2S-(6(Joi=t+R*$7l2M!ykrm?z{U|v(ilri6Xs?b14~l8JZAs@
+z+?=~7y`v{1q^5&-RA&V>!INIM8=bZn8mK+6DJa+i7Sy6QwxG$|BE=My)WVj_qTbn<
+z2TUGl0mFX3U!4Ga^gvF--gFkKls($OYs<^aZ>TNEE4AF~@9G;ZjZGP+(mk&#jUKqV
+zn<aoun<d~zO6gkgN;hou=6=7>^-67c2J=#AzpY6Rcv#b3k|L9`iyfid-vU@Q2_SBX
+zFm_JkyK@I{JnqnSRU?{P&}d=*hv*P9iUnX*7~7cVEPT5Jo}NWB_cQP<@VgY~iQ9Rn
+zEiPEfK#@Y-=oat<_y+hMV10eP_Ac9rL8$L}g@3o%&ubxbQHtju9IF99q0E(kcs$jy
+z2|TV_$WG%IQ=~-Zc8)DC%aV4xol|T4N3h5K#<16I=1yHsx<`82KmF!1m%04M<R8+p
+V1$T)$S4jW>002ovPDHLkV1k+dA_xEg
+
+literal 0
+HcmV?d00001
+
+diff --git a/packages/apps/ScreenRecorder/res/drawable-mdpi/ic_notify_screen_recorder.png b/packages/apps/ScreenRecorder/res/drawable-mdpi/ic_notify_screen_recorder.png
+new file mode 100644
+index 0000000000000000000000000000000000000000..55ad0cbf1c3ecbaac2411c99e7a14072257d0851
+GIT binary patch
+literal 568
+zcmV-80>}M{P)<h;3K|Lk000e1NJLTq000;O000;W1^@s6;CDUv00006VoOIv0RI60
+z0RN!9r;`8x0qsddK~zY`&6dB46hRQie^qnNot}y)o|uYYYGQVwhJtYD3#gcz7%P|<
+z31%i{K7;RYEX(Bwg291;unW37JGZ@`fi*A;v$HcIXv5I|s;j>Gs;Yb7e`u1nBrzV3
+z^O(CNByBuv9ZD|(uYp^@W#Bw;23P_=fNAt6z$-I5Y16aSVf-2J82A!$mFzBX7T618
+zcY#9Eb2D3QG$1K6vs9MlUY_S~fR{iP$}%%clD5P974QVO19;3gdf-6H^E?9zGgBxB
+zNC0NGr~xAOoi)nZ_&1;cwtM7&)xKT^mVr925Lek!&zxEYrI77sAd~~lfO8d<lHLOo
+zU=rhs-bJJDokb3mG5!cVtnEDoE&-2f^myg*#u!8^1Nkm+5Nj{u12~X$p^BB6rJ)||
+z0P~QkfE+czWg%CtQ_^K%39QU)D(NtC{ZnoK(99<K9qpov=XLE$1RCIe1N~8~Ri5fk
+zJebE}%<L<0Thh&#A2&cQC1GZRV{qC?;o}aFtye`CMYEojd>X;l&=_QriXH~a(Bng6
+z@YBp5q?Fv<cj7vj1q~^RYYyB4zJ(WQXeIBv`+g5E-bqSBDf-^Bwrb<LEX#$v53b}7
+zzzyI!a4jgg8hsITO@Ytu{`PM?{01-@jXWNGljQ&WkK`A~vBJ&*D}{mp0000<MNUMn
+GLSTZ0Gyf0(
+
+literal 0
+HcmV?d00001
+
+diff --git a/packages/apps/ScreenRecorder/res/drawable-mdpi/ic_notify_screen_recorder_error.png b/packages/apps/ScreenRecorder/res/drawable-mdpi/ic_notify_screen_recorder_error.png
+new file mode 100644
+index 0000000000000000000000000000000000000000..c8afc9040818360108b333468210e267d4d3a930
+GIT binary patch
+literal 585
+zcmV-P0=E5$P)<h;3K|Lk000e1NJLTq000;O000;W1^@s6;CDUv00006VoOIv0RI60
+z0RN!9r;`8x0scuuK~zY`&6d4u6j2n#fA>zD-59Yjm|$a(MhjaDAzH=WR5o@BT8f2@
+zRRkLg5v;{VY$T<B#<GQ-7J@|z!9YNFXUBbeZ0^cqnf(|L^fhnZyKl~U_uP*e_#cL(
+zHA(dQ{W8`r2}w)ewFRJOfoH%a;2dxUI0cM>AHYe>N5E4vJ8HsNTR?svxC?xZbJMdM
+zz&fxMWP3m*>5-XDmJ&!R%q-P)y;YXwbKn3d0<18zB&ieLPk?*CRlsAt)B^`nS(XJ*
+znVA9{NeRHrM%jf3yE6x@Nq++>pfdwxlCCtw(dNaoiC`SJE`jt1#SGvf@KI8cWl)N<
+zs}Te^zyLTsy}hIj;6>ODf)HRdGcT7Yv(?${Ujv_j8^9Au+cOe*TY`F;1d?`u+u_k>
+z*x$xn0Ua|-Z3()W+aIzTDC2og(zU3GdXWtC#u%7L+6OMjUI%!bojC-C;YDkLP2d=K
+zmuE2WIa^-<9>hLvTg5PX(47W=_Zi`JU|kYfX01ff1x99exTMow3<(=s#UhCYc_l9x
+zzoJ*EZ43%Y)d~c4;CR~@{4}#$DJ6IJZlvcRWJpn5L*ORxExbr=2prgT_uUn|cs1>`
+zZ6x~Mus3Pax~}VyyQj7iy#aP2*SABG^D$Q;*9q{&-CzEV55EEQdOeSizDe?b{zvi~
+XI8MUqa3zlT00000NkvXXu0mjf_Hq3#
+
+literal 0
+HcmV?d00001
+
+diff --git a/packages/apps/ScreenRecorder/res/drawable-mdpi/ic_show_touch_disabled.png b/packages/apps/ScreenRecorder/res/drawable-mdpi/ic_show_touch_disabled.png
+new file mode 100644
+index 0000000000000000000000000000000000000000..0ba02429c3c4ca74ea936a1efedb6fc9577d4725
+GIT binary patch
+literal 805
+zcmV+=1KRwFP)<h;3K|Lk000e1NJLTq001BW001Be1^@s6b9#F800006VoOIv00000
+z008+zyMF)x0@_JLK~z}7?Uzey6j2a`zv`}x38O|ujW19Wm4vua38EV}x(Vpc->7>b
+zYjGnkbP=DR1mY_aK}giZOjl32NR4)8dV0n&B7y}?L*Kepr(WmYhX3*}iJSG-+1U6c
+zo7%5qQ3V)tvlGA}U<61)r3tJ7OTZ$q?Cyw2PurCmEhBDr47dR708-#fILbn`1{??K
+z0p=_4NL1es44@UYn_U6MfE;)(s?RF+2rvyy2GAu@y;sO!e*mJ^DKHzUUKG^_zt}IA
+zfn!mcIoz8vG}IeFA@b{y()*&iIAGI`12e#9QJwQ<6G@USI!OnjP3M;)@`r;u4_gbs
+zV_>J7&9po30N`f0*}iC~B~g9(yQ3RD^AR}ZX1m)*xvT_NfrE(LqS^Ff-8|31Oi9yo
+zz+qq*aNry80eFN+E@}F6Pon`zqQK1v>TW3ygklXi06dp8^^V4LA0<s^WBjxbKs~ZH
+zf%}}Bt+u*eYBd0JvsaOYR8;d008*>rW)m^T@4V4yZ7%l4HJ|}J0~Uad05J?q08_xM
+zsNUWJKF`7ZJ#Z2@4ZP^ag!OQ?+)ha3`BZ?rBdS?(8CVCNM3gt&Y#Mm_BMX})dFN(H
+zfbBX3W5IG;8)cJHr-Bc%iiZ0Jyavv6A)Ym0e-(f_U?m4k5_FsPdA<yHIk*hiS#=oQ
+zF9SfD9*Okt?E}DQ(Dp%KxovGe?34o#)i+&??kNH&<95$75K&-vOv!%FvgP6!i|X4-
+zBC3#)Rtnv0rmVi<=wji794X`eK>^f5SAcOhJMSwi#pn|^y9gXD?Aftx7m{c|k0%Gl
+zsn;jnY(0S0BJ$>+0+59BqBIIqk(JQ<&~^gQKFTNs=Mq`jHUQG)o3yQY;qBX9f)0M_
+z;lu|uTqb$13v5YtvO!bZ?TR)DoDI;;ihy!pUQ}OJT}Jx`Py*;^(CsL&D?YEr^GQ@c
+j{I$QMe*T>POS^mr7)~sGz}q+Z00000NkvXXu0mjf7u05^
+
+literal 0
+HcmV?d00001
+
+diff --git a/packages/apps/ScreenRecorder/res/drawable-mdpi/ic_show_touch_enabled.png b/packages/apps/ScreenRecorder/res/drawable-mdpi/ic_show_touch_enabled.png
+new file mode 100644
+index 0000000000000000000000000000000000000000..0d820f6e8b71962f6ffed124295f641a1567bb05
+GIT binary patch
+literal 811
+zcmV+`1JwM9P)<h;3K|Lk000e1NJLTq001BW001Be1^@s6b9#F800006VoOIv00000
+z008+zyMF)x0^mtRK~z}7?Uy@flu;0czq|k4O`-<h4`LyPKtzLu4-^yvVxwt%fS{;F
+zAYyGHDkv5TiiKbhM6nQ2Y%L-x2x_8;#3zE4HVPtYqb8c&lO2oPn9b(T?w@2u1gF_$
+z@0~MeX6~GO7yjG7WG0p0)7Lj9OrJEc^B!QeNiDz{U=9$4Edo9Qoj?cBZDu&<%3_z?
+zF$iMPdf*T+9moLhfE&Q~fKdx<1nPhs@BujCyuUx;a+`F{q-Q2QG^wqOPs*gdCOry1
+z?MYiVBDhJ_Cfy1^$H$StDU+U>)M1jhTyD&n-!kc?NgF0m#VsbiFzGsg<@1RhPX_ke
+zD=;~20qaQ8(k}^_w^wj{FPQYor269X;9@pk23Fu)6Zw3<OQ(m{`ujnuA&T|`Yk`?z
+z=`+v;oB(ppd;9H^%|a?Q3Frp8ocDVQ<E08Wnlu$y4qS9mG(5QEFl!)+y2HrL1*(B6
+zU>?u{JOLIIX6Z5+ocF!JHDHZN)v*LzCIhe)$O88)n;l-Nfvm0o-+=Q#Gq4zF0@eYS
+zfFHosAX>vKHy~13U|XqP9X9ECoFJLhYEq|3Q%d;H40^FMZuY}D*cV%YV5@-lBjj>G
+zQd@zW&in79%BuHYfV;r1;wl9D04ys-pbqGbxnR=3w9xZ%HW`?2Qk=~90`p5<MhD^u
+z5Jk;EAFwC^frilQmB8bowKL)3iYMT_zdZ_QV{mLNx*dnAl*@s0HNXO(2Uu#k+~dMY
+za^Bx522Lf^lG)+&he=1{`Wpfr55WOu6$T&8k`kC+@O_g>2d$^a6=a__=~x)eL7P#r
+z2T3@9gVqOZrmAYUNuL77w4e`#{hd-t0>xkkd<`l{2wrTpNr02Kpk^F*P)#KX_;C<O
+zSCT;Vr(W7g3H&VgfQ`ZJsR)4}IxWE2K%!J>Ge90V?Y!TS<T2{TS~8Q?0rf$07lxnT
+p0B?cU&ie;{?cdRupWput_yuJ#bI)*bcuxQT002ovPDHLkV1i%1YCZq}
+
+literal 0
+HcmV?d00001
+
+diff --git a/packages/apps/ScreenRecorder/res/drawable-mdpi/ic_stop_recording.png b/packages/apps/ScreenRecorder/res/drawable-mdpi/ic_stop_recording.png
+new file mode 100644
+index 0000000000000000000000000000000000000000..696b186835aad666f7df2e83daa7b8c9711b39dd
+GIT binary patch
+literal 259
+zcmeAS@N?(olHy`uVBq!ia0vp^3LwnE1|*BCs=fdzwj^(N7a$D;Kb?2i1F0RJE{-7)
+zhu=<j<ZChzaJ_Hx;M8Lc_K#w6r<q?kez1C{vUaxN%H|f<#dpv6&vM}UbN&8=KTaz)
+zF4?EKR6*(e>nCrfx;{Ca%(mcI^#c}}#(O7gnBE--b&>n(k}e$Z*?2>---88m)2$e#
+zi<#JBD+}fJE}OMxVd(eV>^Ua4FJ1Yi&(XjDM;_d)oBo{0k77P?U<H5I=ZaU`KPPEl
+xyH|HvoXvWF;nT&}K7DQOy!Ls&jE~dVuS`WfZkp`3IFdkq@pScbS?83{1ORYcY9jyu
+
+literal 0
+HcmV?d00001
+
+diff --git a/packages/apps/ScreenRecorder/res/drawable-xhdpi/ic_launcher.png b/packages/apps/ScreenRecorder/res/drawable-xhdpi/ic_launcher.png
+new file mode 100644
+index 0000000000000000000000000000000000000000..bd0d6b832692100ed14802101ac2843354a26523
+GIT binary patch
+literal 2925
+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
+X^0;b3Z8`3500000NkvXXu0mjfL`I9v
+
+literal 0
+HcmV?d00001
+
+diff --git a/packages/apps/ScreenRecorder/res/drawable-xhdpi/ic_notify_screen_recorder.png b/packages/apps/ScreenRecorder/res/drawable-xhdpi/ic_notify_screen_recorder.png
+new file mode 100644
+index 0000000000000000000000000000000000000000..21ea4c40299c1ee3eeb83ae7d9ff731260db97e3
+GIT binary patch
+literal 1351
+zcmV-N1-SZ&P)<h;3K|Lk000e1NJLTq001xm001xu1^@s6R|5Hm00006VoOIv0RI60
+z0RN!9r;`8x1pG-vK~!ko?V8VP9Ay~CKQps4*=!P%ct{%)1r>`0CHSLw5>f>9py0)e
+z;@SQK9z}ZfqBk!d1fgCcc=S^A;L%zUPht{cHBA;t+D+Wu?Ci{V`M&Tt>@Jz<OiREQ
+zhJAPE{q=o*eBbAJ5--a#&T{iP<L%4?XxzhG4``|%0@FYS#A%ua?RLAlu&_Y0**pSH
+z^gaNFK%)6cmSqFa^I`yJ&YtI;{tzX7panb&tf~JHumDU+C^J9=q(BS|1mYOz>$e#A
+zN6$9!bCzX?MFEu2KnSb@SAZ9dWCOhm$IQ#j;Ztd1p#C;+&GWpkfV*{@&@%82@MZ~<
+zo7R(Wt9t(n@S}iL4<JbrfOA0*tN};B4?tV51DQ}H>83KTX?;I2<A%n(7J-+5^AgT1
+za8NaX0AO!#F9H0Om6Z_q9r#QVb8MEH!#PtL>a%I2A8XA7cmntkSSiDbrv(rJgkjjz
+zoIY>}+yZVF*)Yqpyp#5&#Z@DO$^m#lwzRZ_q!`O2!V0LoDQ(2kK%))-saOQ5-LXy;
+zambWFI7ag7(tumIr;VBw-Q?bwer=&d!#HYT8Xj>;4S}v<v7inO42`)=3HY$6!%gxp
+z9lTLgsAT{+JDubMzQT)HeLn^|699*r6C2vC6o5Ubi*2GYEc7Js7Vrx2xPIFPt^?ly
+zo4N4=tsjZmdUb~qiKH|&Lfz}YN5IQDTYegN6?g-<3VfdvNMCFDb=?DbZMZPHYkq$Y
+z_!zh};Wl4ar20N^)11NG;9=3br3?%8jrnv<c>V5#!`pUAV_OD5B*C~`p;isJSbo}=
+z$trL;H|`JMTlHTD9y9MQYtC=7`$P^ulz?j0Kua6OMgU8|#oW#PxpIap>Ra2ss5zLt
+zz+H?<-2eh@mKe$lT)=1i<S%{Nz6}n8T%M5T=(;u&>dO8-;{zRF7kJbFdRx&d>RVRY
+z)f}g-d1;|vR10MQ475SRXkZt(VE_QUCOXA9tZO$k$I)_TlAg3~6Kcu?`bGfzz(y{U
+z@<f?4xghO8WB1LtzCNR(0bLmYvjTB9XBHd4C%~NvbMI)(MlPIo7nomHER=WRY=pC&
+z0G|SX0`CFOtJLBS{uA(}4u6sp;;aDl>&gd4g}>2=`NzN)z<0ni%5xD5{R-@iS<h)8
+zy&nMlQ_SBPbJ%fbaF^M%z7Oj3fyiu9MM~K+3=|bjXv(I9sU%iKLgPyirPeG1ATbmg
+zjYOBG6sWnzCOysW2Y^88&c*>Kky0im9P#T0;KGO`Ns{>J=*X2E?*%}bE7#Ntz=aQf
+znx@@ux63{LnQCAP1cetWL!*xJ&U>EsLaWtk_`csVwIf$$>*{c>>^?NP^pw8GN;l7$
+zs$8RP0Pdo>&}cM1n46nBFlvv0(D(h+luK;b?HeGm-Y)=8@!u+U?Esv^tx;XOE$t5L
+z29OmPlTF}#Zv;6Eb8%8FPCTmklp6lda@xv2*1Rm|H+#Ka+-|pfbpzM~wsM=>FxVD?
+z(-A=IIJ^JO=H}-9*49?-DdjETYv2*!f({azDn+JsZJ{>N6ADz<lu)`7$TiRNHj7en
+z*>L(g@V81OGm7UQ)`3%jnb$jCtmB>&g(3sx#fM5SZ!Rw{cNP~Hi!n+C|106DX)c!W
+zo#c}wNjja5KR-X;@_j#(w4H`rDjAn4XjKW|fwuqu+2cXCe*tK0oSzpch426X002ov
+JPDHLkV1g(9doln3
+
+literal 0
+HcmV?d00001
+
+diff --git a/packages/apps/ScreenRecorder/res/drawable-xhdpi/ic_notify_screen_recorder_error.png b/packages/apps/ScreenRecorder/res/drawable-xhdpi/ic_notify_screen_recorder_error.png
+new file mode 100644
+index 0000000000000000000000000000000000000000..f901bfd1b65bf9b951b059ea566a9efd2d44ed4b
+GIT binary patch
+literal 1336
+zcmV-81;_e{P)<h;3K|Lk000e1NJLTq001xm001xu1^@s6R|5Hm00006VoOIv0RI60
+z0RN!9r;`8x1no&gK~!ko?V8VP9Ay~CKkw|!WV3BeVl-(?E8>shMRL%h2M-=ZP!v1}
+zisD5)C@MwJdeOhYqo5b{;349{gMWZ0#gn3VHYrlD>7p%7bhFvnnb(8gSD#Kd$<Aaa
+zrQi$0zBBXAJJ0v|{XDbId(VwLB5v?;!vly9@T>#cnkT?C;DM|tidMJVZO_im(r&l6
+zfF0d$0Yf0y^SSqa;GD|<f;v0r#wVht4RnC}fECSe0%n0JG35x50tJu(1A+Jx=<8Yr
+z{H5a@@RRrca#a9zB#;1)0IvWK7|ynIFWKceZ-_4>iGk+lfK}(*=fIVwRcHx#9(byT
+z%1!Gij}yB8Gw{8DO&&m==KzbXR%->=0=@;hy4{irrQ&WO^_tfCj#)P}>NN*E2pku4
+zjslk^4WI?Ev9XZ@(em<g0{jAeB#s4dRv6-fDh>79Hr&s&XAay6yaz1T@rvUDNCA>0
+z+14|C;4*L?xKQPV-utqV_9ev=h6xh~-~hj{uz<LjNhOjAxbn87kx2q^695W%5hV8D
+zbtaLAObJBrNUqAmQ3VNvwcC18d(7w4G4>ucZ!DFFjiK%*!MkPXxBW}uwLxkK^o$p4
+zHK9U7qb^edKHSIPQs5onCEz6R*k1M}!sDt;jVb^b8hdbK*ucHO%bGt7Jh@MFk7UTh
+zCIDDMLvEAq<Apvp^J(CWN&f5@X#Z56ZM$h3$i=0-#C--hUAp!t@WhC<nPNetqi7m{
+z7bl&JuRIokcQyY)k@gdve>%cQV-vxXs<EXGfWA?m-iZC)1m+EQ&ly)b1AI6FKq|(B
+zTA@(@A(u}|+;no6uNi;d(VBU)?pfd=bG{>@j|xD)X#gF)Fe|xX54<lzY?Sq-Ycs&>
+zMk=8$2!XM23AFUGyyWs82c9df4TR5?uD_sS$kqu(Dc&>&pl6J&XQcAMF48JgZkESq
+zCa%m#3jL-6S=n#rCZ#~-<sBo|o)$+>j<|Oha8`SHQ}i_MM%&WgzChdxys=9T^9}Gc
+z@ZBzZods^!UQYYErU4ukh$|xc>@M5~xCnf;M~OHOysCW)6U-Vd>O&6Xfm?vL_E`JO
+z7)JRb@Ph#Kt4g2_fRO&Ca+9m#TAku1)EUbHP#gvTE8;(tE<5UvCDjbM+-clcTgBx0
+zvB@HL4p>sA#sj5Q3!1vk-9j8IIQR(aS8LC@>2%*DVb`K73M%wmGgF@W!vN5dxcwLf
+z`?!W2Ivwd@MB*g8G|%&FYildC91jAZD79-E1rXAQs3?kFuh-*%pQ#3>K~Q<4I$kK`
+z@5h~U_jfv-IEtc<IO$B6tta9_+kI$i=_#FOD*hKuS1xWEK=Ape;y8Z$*s)`mjM!5k
+ziK3`5?Gl@IM+Qiy`?J73T;1hv96&I*6(%<>NV>zO0r(1Q{2qSajc^Xbs)4a?O*|YC
+z*oqNEyAg*~FYEK$+uPe&x7%&JFSG%ymtJnuU}v~ni~tgq61gybU0YkbxW2ybn^vLo
+zz?bSkoDw17Giyk-W3F!0<~kCA>X{ZwPYhXg&aG8-$#v7|uYuoHO&w8@bF(Q-rd8)2
+z5tj$%*ikAn05<vOOV4k>k4sBSn{#t>)jY}s{wom*{E*8;f%AEu=bM|G(ag+DCyF93
+uZU+fD{`>4&xuG>l0M~W=|7VZuJ^ltOpn&LQN*oaY0000<MNUMnLSTX)u6`i^
+
+literal 0
+HcmV?d00001
+
+diff --git a/packages/apps/ScreenRecorder/res/drawable-xhdpi/ic_show_touch_disabled.png b/packages/apps/ScreenRecorder/res/drawable-xhdpi/ic_show_touch_disabled.png
+new file mode 100644
+index 0000000000000000000000000000000000000000..329f78c11173de43c0d3963ba4a3192f0f07fc02
+GIT binary patch
+literal 1733
+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
+b(t!L6vu?jmZ`Fn700000NkvXXu0mjf`MOIP
+
+literal 0
+HcmV?d00001
+
+diff --git a/packages/apps/ScreenRecorder/res/drawable-xhdpi/ic_show_touch_enabled.png b/packages/apps/ScreenRecorder/res/drawable-xhdpi/ic_show_touch_enabled.png
+new file mode 100644
+index 0000000000000000000000000000000000000000..31456c438c9c0c3131779c7d62d136984b3a03fd
+GIT binary patch
+literal 1818
+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
+IM6N<$g7@ZYhyVZp
+
+literal 0
+HcmV?d00001
+
+diff --git a/packages/apps/ScreenRecorder/res/drawable-xhdpi/ic_stop_recording.png b/packages/apps/ScreenRecorder/res/drawable-xhdpi/ic_stop_recording.png
+new file mode 100644
+index 0000000000000000000000000000000000000000..dbf357dab7a57a3c00362960b21108e9d5b56aa7
+GIT binary patch
+literal 595
+zcmeAS@N?(olHy`uVBq!ia0vp^4j|0I1|(Ny7TyC=Y)RhkE<hRxemd{2XJBCB@N{tu
+zskrrawy*yo2Z6Tvu?rT6KX#q6TIJps`4#qe_dmGE!Y?=Fz(wY)#&zt=7=3>wdZ%ok
+z`+XZ{Zuz{KvCC#}Ul6o4>RAAPS>Ybp5~~@0%V#p&$qN1Z=&RJ__wDQljv7YH{=Zn|
+zXCR|RxXsPH>-h{@H_Z)Xe51$v{D7s8$X|Vi=W`f!E-){0ekbc1%sS11N9CAAxO4-H
+zJ%e6@cLIw{HOE0l`2*4hjLQzB3$g?o{m_2Ew}Y`Qi1V5;LuX1opA8fLfndRwMX^V{
+zp1p63e&92$;cE$}$^p#+rN`wDSR<aZ&RFho>R(ioe1%Mnlt0TH@2!2QKA{Y@k)IDQ
+zlCE5~P9;ahFoZ23<?w6PYY(Fq@XLt4ElxdU`ImbOqtk}p3>Pvq8CVxEh%_(-FhsUX
+ztzE}(d(NX1)+<i-6@5RURl&6Gu4sdyD8m$sB{^lRCZ1EZ4$KJKaM8|zQ3I+iqeA`0
+zFRm3=xXf1yuK|)TN-fSuPU1|Mug7zj8Eh;UR526lgngbZ*QC{r%EQ?mvh4qI8T^ol
+zxWc-DCGO@8|8Pde2u5SGeGgM*84N$1IaX~wy->*ES@8Z3F2`oRnzrNNl-`dL+tM=S
+z{~pTxV7x8uWoF=^e_7MzA8(JXJ81Xz(|&~|ZcpaLJXdb`TW=6p9hUniW0i=6zuoNM
+el_9IbUQ6eiO^WwbR1gIw4F*qFKbLh*2~7Yux9_U}
+
+literal 0
+HcmV?d00001
+
+diff --git a/packages/apps/ScreenRecorder/res/drawable-xxhdpi/ic_launcher.png b/packages/apps/ScreenRecorder/res/drawable-xxhdpi/ic_launcher.png
+new file mode 100644
+index 0000000000000000000000000000000000000000..b6a0a45d124f2d7587068a8b9fc30367dade21b3
+GIT binary patch
+literal 5091
+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
+
+literal 0
+HcmV?d00001
+
+diff --git a/packages/apps/ScreenRecorder/res/drawable-xxhdpi/ic_notify_screen_recorder.png b/packages/apps/ScreenRecorder/res/drawable-xxhdpi/ic_notify_screen_recorder.png
+new file mode 100644
+index 0000000000000000000000000000000000000000..667cc1e674693b7278cfadf64740104df3b10753
+GIT binary patch
+literal 2659
+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
+RPwD^w002ovPDHLkV1f<S67v86
+
+literal 0
+HcmV?d00001
+
+diff --git a/packages/apps/ScreenRecorder/res/drawable-xxhdpi/ic_notify_screen_recorder_error.png b/packages/apps/ScreenRecorder/res/drawable-xxhdpi/ic_notify_screen_recorder_error.png
+new file mode 100644
+index 0000000000000000000000000000000000000000..8ebaeec6e6e54c6ae42b5899eccaeb15af1f9182
+GIT binary patch
+literal 2643
+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
+B_Jsfd
+
+literal 0
+HcmV?d00001
+
+diff --git a/packages/apps/ScreenRecorder/res/drawable-xxhdpi/ic_show_touch_disabled.png b/packages/apps/ScreenRecorder/res/drawable-xxhdpi/ic_show_touch_disabled.png
+new file mode 100644
+index 0000000000000000000000000000000000000000..ed1658be0a32f93832480b279166b7581f552d4b
+GIT binary patch
+literal 3655
+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
+Z{2xp{5Yz}?U`YS~002ovPDHLkV1iw2wu=A&
+
+literal 0
+HcmV?d00001
+
+diff --git a/packages/apps/ScreenRecorder/res/drawable-xxhdpi/ic_show_touch_enabled.png b/packages/apps/ScreenRecorder/res/drawable-xxhdpi/ic_show_touch_enabled.png
+new file mode 100644
+index 0000000000000000000000000000000000000000..b8e4771e4a4177132c9336a79b681ca3d95ec0b4
+GIT binary patch
+literal 4150
+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
+Aw*UYD
+
+literal 0
+HcmV?d00001
+
+diff --git a/packages/apps/ScreenRecorder/res/drawable-xxhdpi/ic_stop_recording.png b/packages/apps/ScreenRecorder/res/drawable-xxhdpi/ic_stop_recording.png
+new file mode 100644
+index 0000000000000000000000000000000000000000..90fd592af7134a0caffc1b64ea346274d4b0f1fe
+GIT binary patch
+literal 876
+zcmeAS@N?(olHy`uVBq!ia0vp^2_VeD1|%QND7OGoY)RhkE<hRxemd{2XJBAf^mK6y
+zskrraZmhqsqe$EQo7cRwXK77vFlltr@BQ<C|3h2OxF3QW9UO9W-pc8J<LMFM+MSbq
+zr*?jd@QJqAUv|dnWz~l4Edov)iY)?3jA?B%H9Mp}pA@;hUv<hxX{Q~ZW4KeL61Jyq
+z(pY_o>CqG~{fxAO|F<#QFjm!-obveF-+aE&v*=7ro9?N%X1hXP&1t{G9LFGiK+S;V
+z*Gbdn|C@bRihSIBropg)ONLST0ndyXGi^(rOxJTXcl&ps`95=5<MjjD31?Yb*!urz
+zJYf03BlF9UsqXF^&hHo38VFU%{j+|+{6Xvn<GkNHFFg3FP|hj*U^)MuUX|l3=SR<K
+z=$k&*HbK6EKZp6XT-~)vrU_?PA2@J2kH`L8&z>^IxZjUo-1l|+XP{~A%Wq#>^Iq*|
+z?_QQ#cD*xiJ}u04-0t-A=9iV*d2K#tr+nPFCbj=V?EJsh^G=F=&|Sw`y1&Df(K){0
+z@~r#Et|xo5eYE;;Y4gjeD_J62S6=_V`1+zrn==B^4qR55z9wfu=(1S%hvz+4O!5BK
+zF}rP=&DSX>mDe~qtoS5!or!U((MlzU`|kJWcCK}5Sn;#f$)kaVgL49dBBPLkiUU&%
+zi$}u*22KGX1x6<(6$f%9XQ?|xPrW*$bDPd;_UNSzQ(~Ofv4q?**IQk%Sn{ab)tyEA
+zPpSA9MXqX?leGAi;fLtO|JUb98BVW>WO}skr}_cIqyK(h7SliT(b&JS`23S8s^9oK
+znCb#b`YH~8efRS2w9XFGdaf9Tc-zT~mvV9_CZq{>)qb)M%t^NYaQUU#x7^G}!iWDe
+z$rRi@mJ+nA-{&TulyO&^X}ieX$qR01+vg?<shVu;^pE;{zV?YcgS_oz<MSDrOi7Yb
+zKi^OPSDf?c^75P3tC#!M^v%qFWUOiZ!t1-B_pEJ8bJuK}k)M1uBx(JOon~PUb;`@D
+ze|KEHcw+5znarP=pB_a=D{pt-Zsa4id+Xc4Ez`o<p1xa=w`%M2#p@ThLKF1SKa3(g
+V%r`$3PHzWg8c$b0mvv4FO#oAwfC>Nr
+
+literal 0
+HcmV?d00001
+
+diff --git a/packages/apps/ScreenRecorder/res/values-el/strings.xml b/packages/apps/ScreenRecorder/res/values-el/strings.xml
+new file mode 100644
+index 0000000..c87b741
+--- /dev/null
++++ b/packages/apps/ScreenRecorder/res/values-el/strings.xml
+@@ -0,0 +1,18 @@
++<?xml version="1.0" encoding="utf-8"?>
++<resources>
++
++    <string name="app_name">ScreenRecorder</string>
++
++    <string name="notification_recording_title">Η καταγραφή οθόνης βρίσκεται σε εξέλιξη</string>
++
++    <string name="notification_recording_finished_title">Η καταγραφή αποθηκεύτηκε</string>
++    <string name="notification_recording_finished_text">Πατήστε για να δείτε %s</string>
++
++    <string name="notification_recording_error_title">Σφάλμα</string>
++    <string name="notification_recording_error_text">%s</string>
++
++    <string name="error_unable_to_create_directory">Δεν ήταν δυνατή η δημιουργία φακέλου αποθήκευσης.</string>
++    <string name="error_external_storage_unavailable">Δεν υπάρχει εξωτερικός χώρος αποθήκευσης.</string>
++    <string name="error_unable_to_start">Δεν είναι δυνατή η εκκίνηση της καταγραφής.</string>
++
++</resources>
+diff --git a/packages/apps/ScreenRecorder/res/values-sk/strings.xml b/packages/apps/ScreenRecorder/res/values-sk/strings.xml
+new file mode 100644
+index 0000000..3150aee
+--- /dev/null
++++ b/packages/apps/ScreenRecorder/res/values-sk/strings.xml
+@@ -0,0 +1,18 @@
++<?xml version="1.0" encoding="utf-8"?>
++<resources>
++
++    <string name="app_name">ScreenRecorder</string>
++
++    <string name="notification_recording_title">Prebieha nahrávanie obrazovky</string>
++
++    <string name="notification_recording_finished_title">Nahrávka uložená</string>
++    <string name="notification_recording_finished_text">Kliknite pre zobrazenie %s</string>
++
++    <string name="notification_recording_error_title">Chyba</string>
++    <string name="notification_recording_error_text">%s</string>
++
++    <string name="error_unable_to_create_directory">Nepodarilo sa vytvoriť adresár.</string>
++    <string name="error_external_storage_unavailable">Externé uložisko nie je dostupné.</string>
++    <string name="error_unable_to_start">Nie je možné spustiť nahrávanie.</string>
++
++</resources>
+diff --git a/packages/apps/ScreenRecorder/res/values/config.xml b/packages/apps/ScreenRecorder/res/values/config.xml
+new file mode 100644
+index 0000000..f053dc9
+--- /dev/null
++++ b/packages/apps/ScreenRecorder/res/values/config.xml
+@@ -0,0 +1,10 @@
++<?xml version="1.0" encoding="utf-8"?>
++<resources>
++
++    <!-- Default screen recorder video dimensions expressed as WxH -->
++    <string name="config_screenRecorderOutputDimensions">720x1280</string>
++
++    <!-- Default screen recorder framerate -->
++    <integer name="config_screenRecorderFramerate">4000000</integer>
++
++</resources>
+\ No newline at end of file
+diff --git a/packages/apps/ScreenRecorder/res/values/strings.xml b/packages/apps/ScreenRecorder/res/values/strings.xml
+new file mode 100644
+index 0000000..4f228ce
+--- /dev/null
++++ b/packages/apps/ScreenRecorder/res/values/strings.xml
+@@ -0,0 +1,23 @@
++<?xml version="1.0" encoding="utf-8"?>
++<resources>
++
++    <string name="app_name">ScreenRecorder</string>
++
++    <string name="notification_recording_title">Screen recording in progress</string>
++
++    <string name="notification_recording_finished_title">Screen recording saved</string>
++    <string name="notification_recording_finished_text">Touch to view %s</string>
++
++    <string name="notification_recording_error_title">Screen recorder error</string>
++    <string name="notification_recording_error_text">%s</string>
++
++    <string name="notification_video_processing_title">Processing recorded video</string>
++
++    <string name="notification_action_stop_recording">Stop recording</string>
++    <string name="notification_action_show_touch">Show touch</string>
++
++    <string name="error_unable_to_create_directory">Unable to create output directory.</string>
++    <string name="error_external_storage_unavailable">No external storage available.</string>
++    <string name="error_unable_to_start">Unable to start recording.</string>
++
++</resources>
+diff --git a/packages/apps/ScreenRecorder/src/org/chameleonos/screenrecorder/ScreenRecordReceiver.java b/packages/apps/ScreenRecorder/src/org/chameleonos/screenrecorder/ScreenRecordReceiver.java
+new file mode 100644
+index 0000000..b54b9e9
+--- /dev/null
++++ b/packages/apps/ScreenRecorder/src/org/chameleonos/screenrecorder/ScreenRecordReceiver.java
+@@ -0,0 +1,50 @@
++/**
++ * Copyright (c) 2013, The ChameleonOS Open Source Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.chameleonos.screenrecorder;
++
++import android.app.NotificationManager;
++import android.content.BroadcastReceiver;
++import android.content.Context;
++import android.content.Intent;
++import android.net.Uri;
++
++import java.io.File;
++
++import static org.chameleonos.screenrecorder.ScreenRecorderService.ACTION_NOTIFY_DELETE_SCREENRECORD;
++import static org.chameleonos.screenrecorder.ScreenRecorderService.ACTION_NOTIFY_RECORD_SERVICE;
++import static org.chameleonos.screenrecorder.ScreenRecorderService.NOTIFICATION_ID;
++import static org.chameleonos.screenrecorder.ScreenRecorderService.SCREENRECORD_PATH;
++
++public class ScreenRecordReceiver extends BroadcastReceiver {
++
++    @Override
++    public void onReceive(Context context, Intent intent) {
++        if (ACTION_NOTIFY_RECORD_SERVICE.equals(intent.getAction())) {
++            Intent serviceIntent = new Intent(context, ScreenRecorderService.class);
++            serviceIntent.setAction(ACTION_NOTIFY_RECORD_SERVICE);
++            context.startService(serviceIntent);
++        } else if (ACTION_NOTIFY_DELETE_SCREENRECORD.equals(intent.getAction())) {
++            File screenRecord = new File(intent.getExtras().getString(SCREENRECORD_PATH));
++            if (screenRecord.exists()) screenRecord.delete();
++            context.sendBroadcast(new Intent(Intent.ACTION_MEDIA_SCANNER_SCAN_FILE,
++                    Uri.fromFile(screenRecord)));
++            NotificationManager notificationManager =
++                    (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
++            notificationManager.cancel(NOTIFICATION_ID);
++        }
++    }
++}
+diff --git a/packages/apps/ScreenRecorder/src/org/chameleonos/screenrecorder/ScreenRecorderService.java b/packages/apps/ScreenRecorder/src/org/chameleonos/screenrecorder/ScreenRecorderService.java
+new file mode 100644
+index 0000000..57a8cf7
+--- /dev/null
++++ b/packages/apps/ScreenRecorder/src/org/chameleonos/screenrecorder/ScreenRecorderService.java
+@@ -0,0 +1,332 @@
++/**
++ * Copyright (c) 2013, The ChameleonOS Open Source Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *     http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package org.chameleonos.screenrecorder;
++
++import android.app.IntentService;
++import android.app.Notification;
++import android.app.NotificationManager;
++import android.app.PendingIntent;
++import android.content.ContentResolver;
++import android.content.Context;
++import android.content.Intent;
++import android.content.res.Resources;
++import android.graphics.Bitmap;
++import android.graphics.Point;
++import android.media.MediaActionSound;
++import android.media.MediaMetadataRetriever;
++import android.media.screenrecorder.ScreenRecorder;
++import android.media.screenrecorder.ScreenRecorder.ScreenRecorderCallbacks;
++import android.net.Uri;
++import android.os.Environment;
++import android.provider.Settings;
++import android.text.TextUtils;
++import android.util.Log;
++import android.view.Display;
++import android.view.Surface;
++import android.view.WindowManager;
++
++import java.io.File;
++import java.text.SimpleDateFormat;
++import java.util.Date;
++
++public class ScreenRecorderService extends IntentService
++        implements ScreenRecorderCallbacks {
++    public static final String ACTION_NOTIFY_RECORD_SERVICE
++            = "org.chameleonos.action.NOTIFY_RECORD_SERVICE";
++    public static final String ACTION_NOTIFY_DELETE_SCREENRECORD
++            = "org.chameleonos.action.NOTIFY_DELETE_SCREENRECORD";
++    public static final String ACTION_NOTIFY_TOGGLE_SHOW_TOUCHES
++            = "org.chameleonos.action.NOTIFY_TOGGLE_SHOW_TOUCHES";
++    public static final String SCREENRECORD_PATH
++            = "org.chameleonos.screenrecorder.SCREENRECORD_PATH";
++
++    private static final String TAG = "ScreenRecorderService";
++    private static final String RECORDER_FOLDER = "ScreenRecorder";
++    private static final String RECORDER_PATH =
++            Environment.getExternalStorageDirectory().getAbsolutePath()
++                    + File.separator + RECORDER_FOLDER;
++
++    public static final int NOTIFICATION_ID = 0xD34D;
++
++    // videos will be saved using SCR_[date]_[time].mp4
++    private static final String FILE_NAME_FORMAT = "SCR_%s.mp4";
++    private static final String DATE_TIME_FORMAT = "yyyyMMdd_HHmmss";
++    private static final String SCREENRECORD_SHARE_SUBJECT_TEMPLATE = "ScreenRecord (%s)";
++
++    private static String sCurrentFileName;
++    private static ScreenRecorder sScreenRecorder;
++    private static MediaActionSound sActionSound = new MediaActionSound();
++
++    public ScreenRecorderService() {
++        super(TAG);
++    }
++
++    private void startOrStopRecording() {
++        if (sScreenRecorder == null) {
++            sScreenRecorder = ScreenRecorder.getInstance();
++            sScreenRecorder.setScreenRecorderCallbacks(this);
++        }
++        final int state = sScreenRecorder.getState();
++        if (state != ScreenRecorder.STATE_RECORDING) {
++            startRecording();
++        } else {
++            sActionSound.play(MediaActionSound.STOP_VIDEO_RECORDING);
++            sScreenRecorder.stop();
++            postProcessingNotification();
++        }
++    }
++
++    private static String getVideoFileName() {
++        final String dateTime;
++        SimpleDateFormat sdf = new SimpleDateFormat(DATE_TIME_FORMAT);
++        dateTime = sdf.format(new Date()).toString();
++
++        return String.format(FILE_NAME_FORMAT, dateTime);
++    }
++
++    private void startRecording() {
++        // make sure external storage is available first
++        if (!Environment.MEDIA_MOUNTED.equals(Environment.getExternalStorageState())) {
++            postRecordingErrorNotification(getString(R.string.error_external_storage_unavailable));
++            return;
++        }
++
++        WindowManager wm = (WindowManager) getSystemService(Context.WINDOW_SERVICE);
++        final Display display = wm.getDefaultDisplay();
++        final int rotation = display.getRotation();
++        final ContentResolver resolver = getContentResolver();
++        final Resources res = getResources();
++
++        final int[] dimensions = getVideoDimensions(res, display);
++        final int bitRate = Settings.System.getInt(resolver,
++                Settings.System.SCREEN_RECORDER_BITRATE,
++                res.getInteger(R.integer.config_screenRecorderFramerate));
++        final int recordAudio = 0; /*Settings.System.getInt(resolver,
++                Settings.System.SCREEN_RECORDER_RECORD_AUDIO, 0) == 1;*/
++
++        sScreenRecorder.init(rotation, dimensions[0], dimensions[1], bitRate, 0/*, recordAudio*/);
++        File f = new File(RECORDER_PATH);
++        if (!f.exists()) {
++            if (!f.mkdir()) {
++                Log.e(TAG, "Unable to create output directory " + RECORDER_PATH);
++                postRecordingErrorNotification(
++                        getString(R.string.error_unable_to_create_directory));
++                return;
++            }
++        }
++        sCurrentFileName = getVideoFileName();
++        final String fileName = RECORDER_PATH + File.separator + sCurrentFileName;
++        Log.d(TAG, "Start recording screen to " + fileName);
++        try {
++            if (!sScreenRecorder.start(fileName)) {
++                postRecordingErrorNotification(getString(R.string.error_unable_to_start));
++            }
++        } catch (IllegalStateException e) {
++            postRecordingErrorNotification(getString(R.string.error_unable_to_start));
++        }
++    }
++
++    /* Screen recorder callbacks */
++    @Override
++    public void onRecordingStarted() {
++        final boolean recordAudio = false; /*Settings.System.getInt(getContentResolver(),
++                Settings.System.SCREEN_RECORDER_RECORD_AUDIO, 0) == 1;*/
++        // only play the start recording sound when only video is being recorded
++        // otherwise the sound will be picked up by the mic and included which
++        // isn't really desirable.
++        if (!recordAudio) sActionSound.play(MediaActionSound.START_VIDEO_RECORDING);
++        postRecordingNotification();
++    }
++
++    @Override
++    public void onRecordingFinished() {
++        stopForeground(true);
++        postRecordingFinishedNotification();
++    }
++
++    @Override
++    public void onRecordingError(String error) {
++        postRecordingErrorNotification(error);
++    }
++
++    private void postRecordingNotification() {
++        // set an action for stopping recording
++        Intent intent = new Intent(ACTION_NOTIFY_RECORD_SERVICE);
++        PendingIntent stopIntent = PendingIntent.getBroadcast(this, 0, intent, 0);
++        intent = new Intent(this, ScreenRecorderService.class);
++
++        // set an action for toggling show touches
++        intent.setAction(ACTION_NOTIFY_TOGGLE_SHOW_TOUCHES);
++        PendingIntent showTouchesIntent = PendingIntent.getService(this, 0,
++                intent, 0);
++        final boolean showTouches = Settings.System.getInt(getContentResolver(),
++                Settings.System.SHOW_TOUCHES, 0) == 1;
++        NotificationManager nm =
++                (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
++        Notification notice = new Notification.Builder(this)
++                .setAutoCancel(false)
++                .setOngoing(true)
++                .setContentTitle(getString(R.string.notification_recording_title))
++                .setSmallIcon(R.drawable.ic_notify_screen_recorder)
++                .setWhen(System.currentTimeMillis())
++                .setPriority(Integer.MAX_VALUE)
++                .addAction(R.drawable.ic_stop_recording,
++                        getString(R.string.notification_action_stop_recording), stopIntent)
++                .addAction(showTouches ? R.drawable.ic_show_touch_enabled
++                        : R.drawable.ic_show_touch_disabled,
++                        getString(R.string.notification_action_show_touch), showTouchesIntent)
++                .build();
++        nm.notify(NOTIFICATION_ID, notice);
++    }
++
++    private void postProcessingNotification() {
++        NotificationManager nm =
++                (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
++        Notification notice = new Notification.Builder(this)
++                .setAutoCancel(true)
++                .setOngoing(false)
++                .setContentTitle(getString(R.string.notification_video_processing_title))
++                .setSmallIcon(R.drawable.ic_notify_screen_recorder)
++                .setWhen(System.currentTimeMillis())
++                .build();
++        nm.notify(NOTIFICATION_ID, notice);
++    }
++
++    private void postRecordingFinishedNotification() {
++        long screenRecordTime = System.currentTimeMillis();
++        Uri uri = Uri.fromFile(new File(RECORDER_PATH + File.separator + sCurrentFileName));
++        String subjectDate = new SimpleDateFormat("hh:mma, MMM dd, yyyy")
++            .format(new Date(screenRecordTime));
++        String subject = String.format(SCREENRECORD_SHARE_SUBJECT_TEMPLATE, subjectDate);
++        Intent sharingIntent = new Intent(Intent.ACTION_SEND);
++        sharingIntent.setType("video/mp4");
++        sharingIntent.putExtra(Intent.EXTRA_STREAM, uri);
++        sharingIntent.putExtra(Intent.EXTRA_SUBJECT, subject);
++
++        Intent chooserIntent = Intent.createChooser(sharingIntent, null);
++        chooserIntent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TASK
++                | Intent.FLAG_ACTIVITY_NEW_TASK);
++
++        Intent deleteIntent = new Intent(ACTION_NOTIFY_DELETE_SCREENRECORD);
++        deleteIntent.putExtra(SCREENRECORD_PATH, RECORDER_PATH + File.separator + sCurrentFileName);
++
++        Intent intent = new Intent(Intent.ACTION_VIEW);
++        intent.setDataAndType(uri, "video/mp4");
++        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
++        PendingIntent contentIntent = PendingIntent.getActivity(this, 0, intent, 0);
++        NotificationManager nm =
++                (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
++        Notification.Builder b = new Notification.Builder(this)
++                .setAutoCancel(true)
++                .setOngoing(false)
++                .setContentTitle(getString(R.string.notification_recording_finished_title))
++                .setContentText(getString(R.string.notification_recording_finished_text,
++                        sCurrentFileName))
++                .setSmallIcon(R.drawable.ic_notify_screen_recorder)
++                .setWhen(screenRecordTime)
++                .setContentIntent(contentIntent)
++                .addAction(com.android.internal.R.drawable.ic_menu_share,
++                        getString(com.android.internal.R.string.share),
++                        PendingIntent.getActivity(this, 0, chooserIntent,
++                                PendingIntent.FLAG_CANCEL_CURRENT))
++                .addAction(com.android.internal.R.drawable.ic_menu_delete,
++                        getString(com.android.internal.R.string.delete),
++                        PendingIntent.getBroadcast(this, 0, deleteIntent,
++                                PendingIntent.FLAG_CANCEL_CURRENT));
++
++        // try and grab a frame as a preview
++        MediaMetadataRetriever mmr = new MediaMetadataRetriever();
++        mmr.setDataSource(RECORDER_PATH + File.separator + sCurrentFileName);
++        Bitmap thumbnail = mmr.getFrameAtTime();
++        if (thumbnail != null) {
++            Notification.BigPictureStyle style =
++                    new Notification.BigPictureStyle()
++                            .bigPicture(thumbnail)
++                    .setSummaryText(getString(R.string.notification_recording_finished_text,
++                            sCurrentFileName));
++            b.setStyle(style);
++        }
++
++        nm.notify(NOTIFICATION_ID, b.build());
++    }
++
++    private void postRecordingErrorNotification(String error) {
++        NotificationManager nm =
++                (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
++        Notification notice = new Notification.Builder(this)
++                .setAutoCancel(true)
++                .setOngoing(false)
++                .setContentTitle(getString(R.string.notification_recording_error_title))
++                .setContentText(getString(R.string.notification_recording_error_text, error))
++                .setSmallIcon(R.drawable.ic_notify_screen_recorder_error)
++                .setWhen(System.currentTimeMillis())
++                .build();
++        nm.notify(NOTIFICATION_ID, notice);
++    }
++
++    private int[] getVideoDimensions(Resources res, Display display) {
++        String dimensionString = Settings.System.getString(getContentResolver(),
++                Settings.System.SCREEN_RECORDER_OUTPUT_DIMENSIONS);
++        if (TextUtils.isEmpty(dimensionString)) {
++            dimensionString = res.getString(R.string.config_screenRecorderOutputDimensions);
++        }
++        int[] dimensions = parseDimensions(dimensionString);
++        if (dimensions == null) {
++            dimensions = new int[] {720, 1280};
++        }
++
++        // if rotation is Surface.ROTATION_0 and width>height swap
++        final Point p = new Point();
++        display.getRealSize(p);
++        if (display.getRotation() == Surface.ROTATION_0 && (p.x > p.y)) {
++            int tmp = dimensions[0];
++            dimensions[0] = dimensions[1];
++            dimensions[1] = tmp;
++        }
++
++        return dimensions;
++    }
++
++    private static int[] parseDimensions(String dimensions) {
++        String[] tmp = dimensions.split("x");
++        if (tmp.length < 2) return null;
++        int[] dims = new int[2];
++        try {
++            dims[0] = Integer.valueOf(tmp[0]);
++            dims[1] = Integer.valueOf(tmp[1]);
++        } catch (NumberFormatException e) {
++            return null;
++        }
++
++        return dims;
++    }
++
++    @Override
++    protected void onHandleIntent(Intent intent) {
++        final String action = intent.getAction();
++        if (ACTION_NOTIFY_RECORD_SERVICE.equals(action)) {
++            startOrStopRecording();
++        } else if (ACTION_NOTIFY_TOGGLE_SHOW_TOUCHES.equals(action)) {
++            final boolean showTouches = Settings.System.getInt(getContentResolver(),
++                    Settings.System.SHOW_TOUCHES, 0) == 1;
++            Settings.System.putInt(getContentResolver(),
++                    Settings.System.SHOW_TOUCHES, showTouches ? 0 : 1);
++            // call postRecordingNotification so the icon gets updated based on this change
++            postRecordingNotification();
++        }
++    }
++}

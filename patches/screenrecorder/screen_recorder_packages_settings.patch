@@ -1,0 +1,237 @@
+diff --git a/packages/apps/Setting/res/xml/screen_recorder_settings.xml b/packages/apps/Setting/res/xml/screen_recorder_settings.xml
+new file mode 100644
+index 0000000..879c603
+--- /dev/null
++++ b/packages/apps/Setting/res/xml/screen_recorder_settings.xml
+@@ -0,0 +1,20 @@
++<?xml version="1.0" encoding="utf-8"?>
++
++<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
++        android:title="@string/screen_recorder_title">
++
++    <ListPreference
++        android:key="screen_recorder_size"
++        android:title="@string/screen_recorder_video_dimensions_title"
++        android:entries="@array/screen_recorder_video_sizes"
++        android:entryValues="@array/screen_recorder_video_sizes"
++        android:defaultValue="720x1280" />
++
++    <ListPreference
++        android:key="screen_recorder_bitrate"
++        android:title="@string/screen_recorder_video_bitrate_title"
++        android:entries="@array/screen_recorder_bitrate_entries"
++        android:entryValues="@array/screen_recorder_bitrate_values"
++        android:defaultValue="4000000" />
++
++</PreferenceScreen>
+diff --git a/packages/apps/Setting/src/com/android/settings/chameleonos/ScreenRecorderSettings.java b/packages/apps/Setting/src/com/android/settings/chameleonos/ScreenRecorderSettings.java
+new file mode 100644
+index 0000000..2c6bf86
+--- /dev/null
++++ b/packages/apps/Setting/src/com/android/settings/chameleonos/ScreenRecorderSettings.java
+@@ -0,0 +1,86 @@
++/*
++ * Copyright (C) 2013 The ChameleonOS Open Source Project
++ *
++ * Licensed under the Apache License, Version 2.0 (the "License");
++ * you may not use this file except in compliance with the License.
++ * You may obtain a copy of the License at
++ *
++ *      http://www.apache.org/licenses/LICENSE-2.0
++ *
++ * Unless required by applicable law or agreed to in writing, software
++ * distributed under the License is distributed on an "AS IS" BASIS,
++ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
++ * See the License for the specific language governing permissions and
++ * limitations under the License.
++ */
++
++package com.android.settings.chameleonos;
++
++import android.content.ContentResolver;
++import android.os.Bundle;
++import android.preference.ListPreference;
++import android.preference.Preference;
++import android.provider.Settings;
++import android.text.TextUtils;
++import com.android.settings.R;
++import com.android.settings.SettingsPreferenceFragment;
++
++public class ScreenRecorderSettings extends SettingsPreferenceFragment implements
++        Preference.OnPreferenceChangeListener {
++
++    private static final String KEY_VIDEO_SIZE = "screen_recorder_size";
++    private static final String KEY_VIDEO_BITRATE = "screen_recorder_bitrate";
++
++    private ListPreference mVideoSizePref;
++    private ListPreference mVideoBitratePref;
++
++    @Override
++    public void onCreate(Bundle icicle) {
++        super.onCreate(icicle);
++        addPreferencesFromResource(R.xml.screen_recorder_settings);
++
++        final ContentResolver resolver = getContentResolver();
++        mVideoSizePref = (ListPreference) findPreference(KEY_VIDEO_SIZE);
++        mVideoSizePref.setOnPreferenceChangeListener(this);
++        String size = Settings.System.getString(resolver,
++                Settings.System.SCREEN_RECORDER_OUTPUT_DIMENSIONS);
++        updateVideoSizePreference(size);
++
++        mVideoBitratePref = (ListPreference) findPreference(KEY_VIDEO_BITRATE);
++        mVideoBitratePref.setOnPreferenceChangeListener(this);
++        String rate= Settings.System.getString(resolver,
++                Settings.System.SCREEN_RECORDER_BITRATE);
++        updateVideoBitratePreference(rate);
++    }
++
++    @Override
++    public boolean onPreferenceChange(Preference preference, Object o) {
++        if (preference == mVideoSizePref) {
++            updateVideoSizePreference((String) o);
++            return true;
++        } else if (preference == mVideoBitratePref) {
++            updateVideoBitratePreference((String) o);
++            return true;
++        }
++        return false;
++    }
++
++    private void updateVideoSizePreference(String value) {
++        if (TextUtils.isEmpty(value)) value = getString(R.string.screen_recorder_size_720x1280);
++        mVideoSizePref.setSummary(mVideoSizePref
++                .getEntries()[mVideoSizePref.findIndexOfValue(value)]);
++        Settings.System.putString(getContentResolver(),
++                Settings.System.SCREEN_RECORDER_OUTPUT_DIMENSIONS,
++                value);
++    }
++
++    private void updateVideoBitratePreference(String value) {
++        if (TextUtils.isEmpty(value)) value = getString(R.string.screen_recorder_bitrate_4000000);
++        mVideoBitratePref.setSummary(mVideoBitratePref
++                .getEntries()[mVideoBitratePref.findIndexOfValue(value)]);
++        Settings.System.putInt(getContentResolver(),
++                Settings.System.SCREEN_RECORDER_BITRATE,
++                Integer.valueOf(value));
++    }
++}
++
+diff --git a/packages/apps/Setting/res/values/cm_arrays.xml b/packages/apps/Setting/res/values/cm_arrays.xml
+index 10c4206..2407557 100644
+--- a/packages/apps/Setting/res/values/cm_arrays.xml
++++ b/packages/apps/Setting/res/values/cm_arrays.xml
+@@ -688,6 +688,48 @@
+         <item>@string/app_ops_labels_auto_start</item>
+     </string-array>
+ 
++    <!-- Screen recorder video sizes -->
++    <string-array name="screen_recorder_video_sizes">
++        <item>@string/screen_recorder_size_240x400</item>
++        <item>@string/screen_recorder_size_360x640</item>
++        <item>@string/screen_recorder_size_480x800</item>
++        <item>@string/screen_recorder_size_480x854</item>
++        <item>@string/screen_recorder_size_540x960</item>
++        <item>@string/screen_recorder_size_600x1024</item>
++        <item>@string/screen_recorder_size_720x1280</item>
++    </string-array>
++
++    <!-- Screen recorder bitrates -->
++    <string-array name="screen_recorder_bitrate_entries">
++        <item>@string/screen_recorder_bitrate_title_100000</item>
++        <item>@string/screen_recorder_bitrate_title_250000</item>
++        <item>@string/screen_recorder_bitrate_title_500000</item>
++        <item>@string/screen_recorder_bitrate_title_1000000</item>
++        <item>@string/screen_recorder_bitrate_title_2000000</item>
++        <item>@string/screen_recorder_bitrate_title_3000000</item>
++        <item>@string/screen_recorder_bitrate_title_4000000</item>
++        <item>@string/screen_recorder_bitrate_title_5000000</item>
++        <item>@string/screen_recorder_bitrate_title_10000000</item>
++        <item>@string/screen_recorder_bitrate_title_20000000</item>
++        <item>@string/screen_recorder_bitrate_title_50000000</item>
++        <item>@string/screen_recorder_bitrate_title_100000000</item>
++    </string-array>
++
++    <string-array name="screen_recorder_bitrate_values">
++        <item>@string/screen_recorder_bitrate_100000</item>
++        <item>@string/screen_recorder_bitrate_250000</item>
++        <item>@string/screen_recorder_bitrate_500000</item>
++        <item>@string/screen_recorder_bitrate_1000000</item>
++        <item>@string/screen_recorder_bitrate_2000000</item>
++        <item>@string/screen_recorder_bitrate_3000000</item>
++        <item>@string/screen_recorder_bitrate_4000000</item>
++        <item>@string/screen_recorder_bitrate_5000000</item>
++        <item>@string/screen_recorder_bitrate_10000000</item>
++        <item>@string/screen_recorder_bitrate_20000000</item>
++        <item>@string/screen_recorder_bitrate_50000000</item>
++        <item>@string/screen_recorder_bitrate_100000000</item>
++    </string-array>
++
+     <!-- Names of categories of app ops tabs -->
+     <string-array name="app_ops_categories_cm">
+         <item>Location</item>
+diff --git a/packages/apps/Setting/res/values/cm_strings.xml b/packages/apps/Setting/res/values/cm_strings.xml
+index 03beb22..949d19e 100644
+--- a/packages/apps/Setting/res/values/cm_strings.xml
++++ b/packages/apps/Setting/res/values/cm_strings.xml
+@@ -1014,6 +1014,45 @@ two in order to insert additional control points. \'Remove\' deletes the selecte
+         <item quantity="other">%d times</item>
+     </plurals>
+ 
++    <!-- Screen recorder -->
++    <string name="screen_recorder_title">Screen recorder</string>
++    <string name="screen_recorder_summary">Adjust screen recorder settings</string>
++    <string name="screen_recorder_video_dimensions_title">Video size</string>
++    <string name="screen_recorder_video_bitrate_title">Bitrate</string>
++    <!-- video sizes -->
++    <string name="screen_recorder_size_240x400">240x400</string>
++    <string name="screen_recorder_size_360x640">360x640</string>
++    <string name="screen_recorder_size_480x800">480x800</string>
++    <string name="screen_recorder_size_480x854">480x854</string>
++    <string name="screen_recorder_size_540x960">540x960</string>
++    <string name="screen_recorder_size_600x1024">600x1024</string>
++    <string name="screen_recorder_size_720x1280">720x1280</string>
++    <!-- frame rates -->
++    <string name="screen_recorder_bitrate_title_100000">100 kB/s</string>
++    <string name="screen_recorder_bitrate_title_250000">250 kB/s</string>
++    <string name="screen_recorder_bitrate_title_500000">500 kB/s</string>
++    <string name="screen_recorder_bitrate_title_1000000">1 MB/s</string>
++    <string name="screen_recorder_bitrate_title_2000000">2 MB/s</string>
++    <string name="screen_recorder_bitrate_title_3000000">3 MB/s</string>
++    <string name="screen_recorder_bitrate_title_4000000">4 MB/s</string>
++    <string name="screen_recorder_bitrate_title_5000000">5 MB/s</string>
++    <string name="screen_recorder_bitrate_title_10000000">10 MB/s</string>
++    <string name="screen_recorder_bitrate_title_20000000">20 MB/s</string>
++    <string name="screen_recorder_bitrate_title_50000000">50 MB/s</string>
++    <string name="screen_recorder_bitrate_title_100000000">100 MB/s</string>
++    <string name="screen_recorder_bitrate_100000">100000</string>
++    <string name="screen_recorder_bitrate_250000">250000</string>
++    <string name="screen_recorder_bitrate_500000">500000</string>
++    <string name="screen_recorder_bitrate_1000000">1000000</string>
++    <string name="screen_recorder_bitrate_2000000">2000000</string>
++    <string name="screen_recorder_bitrate_3000000">3000000</string>
++    <string name="screen_recorder_bitrate_4000000">4000000</string>
++    <string name="screen_recorder_bitrate_5000000">5000000</string>
++    <string name="screen_recorder_bitrate_10000000">10000000</string>
++    <string name="screen_recorder_bitrate_20000000">20000000</string>
++    <string name="screen_recorder_bitrate_50000000">50000000</string>
++    <string name="screen_recorder_bitrate_100000000">100000000</string>
++
+     <!-- App ops menu options -->
+     <string name="app_ops_show_user_apps">Show user apps</string>
+     <string name="app_ops_show_system_apps">Show built-in apps</string>
+diff --git a/packages/apps/Setting/res/xml/display_settings.xml b/packages/apps/Setting/res/xml/display_settings.xml
+index 355d0f2..595bedf 100644
+--- a/packages/apps/Setting/res/xml/display_settings.xml
++++ b/packages/apps/Setting/res/xml/display_settings.xml
+@@ -28,6 +28,11 @@
+                 android:fragment="com.android.settings.WallpaperTypeSettings" />
+ 
+         <PreferenceScreen
++                android:key="screen_recorder"
++                android:title="@string/screen_recorder_title"
++                android:fragment="com.android.settings.chameleonos.ScreenRecorderSettings" />
++
++        <PreferenceScreen
+             android:key="display_rotation"
+             android:fragment="com.android.settings.cyanogenmod.DisplayRotation"
+             android:title="@string/display_rotation_title" />
