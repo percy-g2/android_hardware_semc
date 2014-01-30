@@ -1,8 +1,8 @@
-diff --git a/packages/apps/Setting/res/xml/screen_recorder_settings.xml b/packages/apps/Setting/res/xml/screen_recorder_settings.xml
+diff --git a/packages/apps/Settings/res/xml/screen_recorder_settings.xml b/packages/apps/Settings/res/xml/screen_recorder_settings.xml
 new file mode 100644
 index 0000000..879c603
 --- /dev/null
-+++ b/packages/apps/Setting/res/xml/screen_recorder_settings.xml
++++ b/packages/apps/Settings/res/xml/screen_recorder_settings.xml
 @@ -0,0 +1,20 @@
 +<?xml version="1.0" encoding="utf-8"?>
 +
@@ -24,11 +24,11 @@ index 0000000..879c603
 +        android:defaultValue="4000000" />
 +
 +</PreferenceScreen>
-diff --git a/packages/apps/Setting/src/com/android/settings/chameleonos/ScreenRecorderSettings.java b/packages/apps/Setting/src/com/android/settings/chameleonos/ScreenRecorderSettings.java
+diff --git a/packages/apps/Settings/src/com/android/settings/chameleonos/ScreenRecorderSettings.java b/packages/apps/Settings/src/com/android/settings/chameleonos/ScreenRecorderSettings.java
 new file mode 100644
 index 0000000..2c6bf86
 --- /dev/null
-+++ b/packages/apps/Setting/src/com/android/settings/chameleonos/ScreenRecorderSettings.java
++++ b/packages/apps/Settings/src/com/android/settings/chameleonos/ScreenRecorderSettings.java
 @@ -0,0 +1,86 @@
 +/*
 + * Copyright (C) 2013 The ChameleonOS Open Source Project
@@ -116,10 +116,10 @@ index 0000000..2c6bf86
 +    }
 +}
 +
-diff --git a/packages/apps/Setting/res/values/cm_arrays.xml b/packages/apps/Setting/res/values/cm_arrays.xml
+diff --git a/packages/apps/Settings/res/values/cm_arrays.xml b/packages/apps/Settings/res/values/cm_arrays.xml
 index 10c4206..2407557 100644
---- a/packages/apps/Setting/res/values/cm_arrays.xml
-+++ b/packages/apps/Setting/res/values/cm_arrays.xml
+--- a/packages/apps/Settings/res/values/cm_arrays.xml
++++ b/packages/apps/Settings/res/values/cm_arrays.xml
 @@ -688,6 +688,48 @@
          <item>@string/app_ops_labels_auto_start</item>
      </string-array>
@@ -169,10 +169,10 @@ index 10c4206..2407557 100644
      <!-- Names of categories of app ops tabs -->
      <string-array name="app_ops_categories_cm">
          <item>Location</item>
-diff --git a/packages/apps/Setting/res/values/cm_strings.xml b/packages/apps/Setting/res/values/cm_strings.xml
+diff --git a/packages/apps/Settings/res/values/cm_strings.xml b/packages/apps/Settings/res/values/cm_strings.xml
 index 03beb22..949d19e 100644
---- a/packages/apps/Setting/res/values/cm_strings.xml
-+++ b/packages/apps/Setting/res/values/cm_strings.xml
+--- a/packages/apps/Settings/res/values/cm_strings.xml
++++ b/packages/apps/Settings/res/values/cm_strings.xml
 @@ -1014,6 +1014,45 @@ two in order to insert additional control points. \'Remove\' deletes the selecte
          <item quantity="other">%d times</item>
      </plurals>
@@ -219,10 +219,10 @@ index 03beb22..949d19e 100644
      <!-- App ops menu options -->
      <string name="app_ops_show_user_apps">Show user apps</string>
      <string name="app_ops_show_system_apps">Show built-in apps</string>
-diff --git a/packages/apps/Setting/res/xml/display_settings.xml b/packages/apps/Setting/res/xml/display_settings.xml
+diff --git a/packages/apps/Settings/res/xml/display_settings.xml b/packages/apps/Settings/res/xml/display_settings.xml
 index 355d0f2..595bedf 100644
---- a/packages/apps/Setting/res/xml/display_settings.xml
-+++ b/packages/apps/Setting/res/xml/display_settings.xml
+--- a/packages/apps/Settings/res/xml/display_settings.xml
++++ b/packages/apps/Settings/res/xml/display_settings.xml
 @@ -28,6 +28,11 @@
                  android:fragment="com.android.settings.WallpaperTypeSettings" />
  
