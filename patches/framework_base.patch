@@ -1,4 +1,7 @@
 #       modified:   core/jni/android_view_HardwareRenderer.cpp
+#       modified:   core/java/android/view/HardwareRenderer.java |   11 ++-------
+#       modified:   core/java/android/view/Surface.java          |   11 ---------
+#       modified:   core/jni/android_view_Surface.cpp            |   31
 diff --git a/frameworks/base/core/jni/android_view_HardwareRenderer.cpp b/frameworks/base/core/jni/android_view_HardwareRenderer.cpp
 index 479fbe2..712e76b 100644
 --- a/frameworks/base/core/jni/android_view_HardwareRenderer.cpp
@@ -14,4 +17,120 @@ index 479fbe2..712e76b 100644
 +#endif
      return systemTime(SYSTEM_TIME_MONOTONIC);
  }
+
+diff --git a/frameworks/base/core/java/android/view/HardwareRenderer.java b/frameworks/base/core/java/android/view/HardwareRenderer.java
+index 56ae4f5..f215189 100644
+--- a/frameworks/base/core/java/android/view/HardwareRenderer.java
++++ b/frameworks/base/core/java/android/view/HardwareRenderer.java
+@@ -835,8 +835,6 @@ public abstract class HardwareRenderer {
+         static final ThreadLocal<ManagedEGLContext> sEglContextStorage
+                 = new ThreadLocal<ManagedEGLContext>();
  
+-        private Surface mSurface = null;
+-
+         EGLContext mEglContext;
+         Thread mEglThread;
+ 
+@@ -1358,7 +1356,7 @@ public abstract class HardwareRenderer {
+             }
+ 
+             enableDirtyRegions();
+-            mSurface = surface;
++
+             return true;
+         }
+ 
+@@ -1463,12 +1461,7 @@ public abstract class HardwareRenderer {
+                     long start = getSystemTime();
+                     try {
+                         status = prepareFrame(dirty);
+-                        // sometimes we get the dirty rect as null
+-                        // and also its better to check the surface
+-                        // validity to avoid any crash.
+-                        if(mSurface.isValid() && dirty != null) {
+-                                mSurface.setDirtyRegion(dirty);
+-                        }
++
+                         saveCount = canvas.save();
+                         callbacks.onHardwarePreDraw(canvas);
+ 
+diff --git a/frameworks/base/core/java/android/view/Surface.java b/frameworks/base/core/java/android/view/Surface.java
+index 05abd60..1bfda2d 100644
+--- a/frameworks/base/core/java/android/view/Surface.java
++++ b/frameworks/base/core/java/android/view/Surface.java
+@@ -45,7 +45,6 @@ public class Surface implements Parcelable {
+     private static native boolean nativeIsConsumerRunningBehind(int nativeObject);
+     private static native int nativeReadFromParcel(int nativeObject, Parcel source);
+     private static native void nativeWriteToParcel(int nativeObject, Parcel dest);
+-    private static native void nativeSetDirtyRegion(int nativeObject, Rect dirty);
+ 
+     public static final Parcelable.Creator<Surface> CREATOR =
+             new Parcelable.Creator<Surface>() {
+@@ -150,16 +149,6 @@ public class Surface implements Parcelable {
+     }
+ 
+     /**
+-     * Set dirty region passed from HW renderer.
+-     * @hide
+-     */
+-    public void setDirtyRegion(Rect dirty) {
+-        if (mNativeObject != 0) {
+-            nativeSetDirtyRegion(mNativeObject,dirty);
+-        }
+-    }
+-
+-    /**
+      * Release the local reference to the server-side surface.
+      * Always call release() when you're done with a Surface.
+      * This will make the surface invalid.
+diff --git a/frameworks/base/core/jni/android_view_Surface.cpp b/frameworks/base/core/jni/android_view_Surface.cpp
+index 1733b65..1868469 100644
+--- a/frameworks/base/core/jni/android_view_Surface.cpp
++++ b/frameworks/base/core/jni/android_view_Surface.cpp
+@@ -188,35 +188,6 @@ static inline SkBitmap::Config convertPixelFormat(PixelFormat format) {
+     }
+ }
+ 
+-static void nativeSetDirtyRegion(JNIEnv* env, jclass clazz,
+-        jint nativeObject, jobject dirtyRect) {
+-
+-    sp<Surface> surface(reinterpret_cast<Surface *>(nativeObject));
+-
+-    if (!isSurfaceValid(surface)) {
+-        doThrowIAE(env);
+-        return;
+-    }
+-
+-    // get dirty region
+-    Region dirtyRegion;
+-    Rect dirty;
+-
+-    dirty.left = env->GetIntField(dirtyRect, gRectClassInfo.left);
+-    dirty.top = env->GetIntField(dirtyRect, gRectClassInfo.top);
+-    dirty.right = env->GetIntField(dirtyRect, gRectClassInfo.right);
+-    dirty.bottom = env->GetIntField(dirtyRect, gRectClassInfo.bottom);
+-
+-    if (!dirty.isEmpty()) {
+-       dirtyRegion.set(dirty);
+-    }
+-
+-    status_t err = surface->setDirtyRegion(&dirtyRegion);
+-    if (err < 0) {
+-        doThrowIAE(env);
+-    }
+-}
+-
+ static inline void swapCanvasPtr(JNIEnv* env, jobject canvasObj, SkCanvas* newCanvas) {
+   jobject canvasFinalizerObj = env->GetObjectField(canvasObj, gCanvasClassInfo.mFinalizer);
+   SkCanvas* previousCanvas = reinterpret_cast<SkCanvas*>(
+@@ -398,8 +369,6 @@ static JNINativeMethod gSurfaceMethods[] = {
+             (void*)nativeReadFromParcel },
+     {"nativeWriteToParcel", "(ILandroid/os/Parcel;)V",
+             (void*)nativeWriteToParcel },
+-    {"nativeSetDirtyRegion", "(ILandroid/graphics/Rect;)V",
+-           (void*)nativeSetDirtyRegion },
+ };
+ 
+ int register_android_view_Surface(JNIEnv* env)
+-- 
+1.7.9.5
