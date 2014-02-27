@@ -120,7 +120,7 @@ index c95f297..0345a09 100644
      size_t size;
      if (val.isFixedSize()) {
 diff --git a/frameworks/native/include/gui/BufferQueue.h b/frameworks/native/include/gui/BufferQueue.h
-index 6250dbb..d3348de 100644
+index c679eee..061b7ce 100644
 --- a/frameworks/native/include/gui/BufferQueue.h
 +++ b/frameworks/native/include/gui/BufferQueue.h
 @@ -46,6 +46,9 @@ public:
@@ -150,7 +150,7 @@ index fb21185..74e315c 100644
  
      // addReleaseFence* adds the sync points associated with a fence to the set
 diff --git a/frameworks/native/include/gui/GLConsumer.h b/frameworks/native/include/gui/GLConsumer.h
-index a5fdfb9..29b6aac 100644
+index d5d9c5b..f45d036 100644
 --- a/frameworks/native/include/gui/GLConsumer.h
 +++ b/frameworks/native/include/gui/GLConsumer.h
 @@ -30,6 +30,11 @@
@@ -185,7 +185,7 @@ index a5fdfb9..29b6aac 100644
      // updateTexImage acquires the most recently queued buffer, and sets the
      // image contents of the target texture to it.
      //
-@@ -245,6 +256,11 @@ protected:
+@@ -247,6 +258,11 @@ protected:
              const sp<GraphicBuffer> graphicBuffer,
              EGLDisplay display, EGLSyncKHR eglFence);
  
@@ -197,7 +197,7 @@ index a5fdfb9..29b6aac 100644
      status_t releaseBufferLocked(int slot,
              const sp<GraphicBuffer> graphicBuffer, EGLSyncKHR eglFence) {
          return releaseBufferLocked(slot, graphicBuffer, mEglDisplay, eglFence);
-@@ -275,6 +291,14 @@ private:
+@@ -277,6 +293,14 @@ private:
      EGLImageKHR createImage(EGLDisplay dpy,
              const sp<GraphicBuffer>& graphicBuffer, const Rect& crop);
  
@@ -212,7 +212,7 @@ index a5fdfb9..29b6aac 100644
      // freeBufferLocked frees up the given buffer slot.  If the slot has been
      // initialized this will release the reference to the GraphicBuffer in that
      // slot and destroy the EGLImage in that slot.  Otherwise it has no effect.
-@@ -426,6 +450,18 @@ private:
+@@ -428,6 +452,18 @@ private:
      // reset mCurrentTexture to INVALID_BUFFER_SLOT.
      int mCurrentTexture;
  
@@ -232,7 +232,7 @@ index a5fdfb9..29b6aac 100644
      // an OpenGL ES context.  For legacy reasons, this is initialized to true,
      // indicating that the ConsumerBase is considered to be attached to
 diff --git a/frameworks/native/include/gui/IGraphicBufferConsumer.h b/frameworks/native/include/gui/IGraphicBufferConsumer.h
-index 0e35f13..b6a7b7a 100644
+index 9aaf979..8523ffd 100644
 --- a/frameworks/native/include/gui/IGraphicBufferConsumer.h
 +++ b/frameworks/native/include/gui/IGraphicBufferConsumer.h
 @@ -39,8 +39,7 @@ class IGraphicBufferConsumer : public IInterface {
@@ -246,10 +246,10 @@ index 0e35f13..b6a7b7a 100644
          size_t getFlattenedSize() const;
          size_t getFdCount() const;
 diff --git a/frameworks/native/include/gui/IGraphicBufferProducer.h b/frameworks/native/include/gui/IGraphicBufferProducer.h
-index a221cba..8f24902 100644
+index 870bf9d..4fa7b41 100644
 --- a/frameworks/native/include/gui/IGraphicBufferProducer.h
 +++ b/frameworks/native/include/gui/IGraphicBufferProducer.h
-@@ -105,8 +105,7 @@ public:
+@@ -111,8 +111,7 @@ public:
      // and height of the window and current transform applied to buffers,
      // respectively.
  
@@ -434,12 +434,12 @@ index 38e019c..5bb0550 100644
  {
      // size
 diff --git a/frameworks/native/libs/gui/Android.mk b/frameworks/native/libs/gui/Android.mk
-index 356ffd2..1714961 100644
+index 57203d8..a473bed 100644
 --- a/frameworks/native/libs/gui/Android.mk
 +++ b/frameworks/native/libs/gui/Android.mk
-@@ -39,6 +39,12 @@ LOCAL_SHARED_LIBRARIES := \
- 	libutils \
- 	liblog
+@@ -43,6 +43,12 @@ ifeq ($(call is-board-platform-in-list, mpq8092), true)
+     LOCAL_CFLAGS            += -DVFM_AVAILABLE
+ endif
  
 +#ifdef STE_HARDWARE
 +LOCAL_SHARED_LIBRARIES += \
@@ -451,7 +451,7 @@ index 356ffd2..1714961 100644
  ifeq ($(TARGET_USES_QCOM_BSP),true)
  ifneq ($(TARGET_QCOM_DISPLAY_VARIANT),)
 diff --git a/frameworks/native/libs/gui/GLConsumer.cpp b/frameworks/native/libs/gui/GLConsumer.cpp
-index 7ee3081..9f5135e 100644
+index 262e19e..cb5e837 100644
 --- a/frameworks/native/libs/gui/GLConsumer.cpp
 +++ b/frameworks/native/libs/gui/GLConsumer.cpp
 @@ -133,6 +133,9 @@ GLConsumer::GLConsumer(const sp<IGraphicBufferConsumer>& bq, uint32_t tex,
@@ -620,7 +620,7 @@ index 7ee3081..9f5135e 100644
      mCurrentCrop = item.mCrop;
      mCurrentTransform = item.mTransform;
      mCurrentScalingMode = item.mScalingMode;
-@@ -815,6 +925,10 @@ void GLConsumer::computeCurrentTransformMatrixLocked() {
+@@ -817,6 +927,10 @@ void GLConsumer::computeCurrentTransformMatrixLocked() {
                      case PIXEL_FORMAT_RGB_888:
                      case PIXEL_FORMAT_RGB_565:
                      case PIXEL_FORMAT_BGRA_8888:
@@ -631,7 +631,7 @@ index 7ee3081..9f5135e 100644
                          // We know there's no subsampling of any channels, so we
                          // only need to shrink by a half a pixel.
                          shrinkAmount = 0.5;
-@@ -1079,6 +1193,49 @@ void GLConsumer::dumpLocked(String8& result, const char* prefix) const
+@@ -1086,6 +1200,49 @@ void GLConsumer::dumpLocked(String8& result, const char* prefix) const
      ConsumerBase::dumpLocked(result, prefix);
  }
  
@@ -681,7 +681,7 @@ index 7ee3081..9f5135e 100644
  static void mtxMul(float out[16], const float a[16], const float b[16]) {
      out[0] = a[0]*b[0] + a[4]*b[1] + a[8]*b[2] + a[12]*b[3];
      out[1] = a[1]*b[0] + a[5]*b[1] + a[9]*b[2] + a[13]*b[3];
-@@ -1102,3 +1259,4 @@ static void mtxMul(float out[16], const float a[16], const float b[16]) {
+@@ -1109,3 +1266,4 @@ static void mtxMul(float out[16], const float a[16], const float b[16]) {
  }
  
  }; // namespace android
@@ -788,7 +788,7 @@ index 70d0e52..138f41e 100644
  
  EGL_ENTRY(EGLBoolean, eglHibernateProcessIMG, void)
 diff --git a/frameworks/native/services/surfaceflinger/Android.mk b/frameworks/native/services/surfaceflinger/Android.mk
-index 807c149..4535718 100644
+index 945d558..12cfc36 100644
 --- a/frameworks/native/services/surfaceflinger/Android.mk
 +++ b/frameworks/native/services/surfaceflinger/Android.mk
 @@ -52,6 +52,10 @@ ifeq ($(TARGET_FORCE_HWC_FOR_VIRTUAL_DISPLAYS),true)
@@ -869,10 +869,10 @@ index 24ca033..170f392 100644
  
      EGLDisplay      mDisplay;
 diff --git a/frameworks/native/services/surfaceflinger/SurfaceFlinger.cpp b/frameworks/native/services/surfaceflinger/SurfaceFlinger.cpp
-index 339e798..a934891 100644
+index 41a25ca..a16c884 100644
 --- a/frameworks/native/services/surfaceflinger/SurfaceFlinger.cpp
 +++ b/frameworks/native/services/surfaceflinger/SurfaceFlinger.cpp
-@@ -2795,7 +2795,7 @@ status_t SurfaceFlinger::onTransact(
+@@ -2811,7 +2811,7 @@ status_t SurfaceFlinger::onTransact(
              const int pid = ipc->getCallingPid();
              const int uid = ipc->getCallingUid();
              if ((uid != AID_GRAPHICS) &&
@@ -881,7 +881,7 @@ index 339e798..a934891 100644
                   (uid != AID_SYSTEM) &&
  #endif
                      !PermissionCache::checkPermission(sAccessSurfaceFlinger, pid, uid)) {
-@@ -2938,6 +2938,9 @@ class GraphicProducerWrapper : public BBinder, public MessageHandler {
+@@ -2954,6 +2954,9 @@ class GraphicProducerWrapper : public BBinder, public MessageHandler {
      uint32_t code;
      Parcel const* data;
      Parcel* reply;
@@ -891,7 +891,7 @@ index 339e798..a934891 100644
  
      enum {
          MSG_API_CALL,
-@@ -2950,6 +2953,9 @@ class GraphicProducerWrapper : public BBinder, public MessageHandler {
+@@ -2966,6 +2969,9 @@ class GraphicProducerWrapper : public BBinder, public MessageHandler {
       */
      virtual status_t transact(uint32_t code,
              const Parcel& data, Parcel* reply, uint32_t flags) {
@@ -901,7 +901,7 @@ index 339e798..a934891 100644
          this->code = code;
          this->data = &data;
          this->reply = reply;
-@@ -2962,6 +2968,9 @@ class GraphicProducerWrapper : public BBinder, public MessageHandler {
+@@ -2978,6 +2984,9 @@ class GraphicProducerWrapper : public BBinder, public MessageHandler {
              looper->sendMessage(this, Message(MSG_API_CALL));
              barrier.wait();
          }

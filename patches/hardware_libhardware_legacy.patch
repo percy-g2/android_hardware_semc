@@ -60,7 +60,7 @@ index 494c8af..afc20ee 100644
      virtual status_t moveEffects(int session,
                                   audio_io_handle_t srcOutput,
 diff --git a/hardware/libhardware_legacy/audio/AudioPolicyManagerBase.cpp b/hardware/libhardware_legacy/audio/AudioPolicyManagerBase.cpp
-index fdf0ca8..1d4b019 100644
+index 944b783..d113a4a 100644
 --- a/hardware/libhardware_legacy/audio/AudioPolicyManagerBase.cpp
 +++ b/hardware/libhardware_legacy/audio/AudioPolicyManagerBase.cpp
 @@ -912,7 +912,12 @@ audio_io_handle_t AudioPolicyManagerBase::getInput(int inputSource,
@@ -149,7 +149,7 @@ index 7847bdd..b82de09 100644
      // misc control functions
      //
 diff --git a/hardware/libhardware_legacy/include/hardware_legacy/AudioPolicyManagerBase.h b/hardware/libhardware_legacy/include/hardware_legacy/AudioPolicyManagerBase.h
-index 09378e0..5fc6d07 100644
+index 5ba09f1..d94e000 100644
 --- a/hardware/libhardware_legacy/include/hardware_legacy/AudioPolicyManagerBase.h
 +++ b/hardware/libhardware_legacy/include/hardware_legacy/AudioPolicyManagerBase.h
 @@ -106,7 +106,12 @@ public:
@@ -174,7 +174,7 @@ index b0ca0b3..2239c36 100644
      };
  
 +#ifdef STE_AUDIO
-+// AUDIO_INPUT_CLIENT_ID_BASE provide a means to refer to client Id´s not explicitly defined in the enum audio_input_clients
++// AUDIO_INPUT_CLIENT_ID_BASE provide a means to refer to client Id\B4s not explicitly defined in the enum audio_input_clients
 +#define AUDIO_INPUT_CLIENT_ID_BASE AUDIO_INPUT_CLIENT_ID1
 +
 +    enum audio_input_clients {

@@ -47,7 +47,7 @@ index 032c1b3..79502d4 100644
  
  void device_ui_init(UIParameters* ui_parameters) {
 diff --git a/bootable/recovery/extendedcommands.c b/bootable/recovery/extendedcommands.c
-index b31de1c..45528c7 100644
+index 9715160..7044ddd 100644
 --- a/bootable/recovery/extendedcommands.c
 +++ b/bootable/recovery/extendedcommands.c
 @@ -32,6 +32,7 @@
@@ -67,7 +67,7 @@ index b31de1c..45528c7 100644
      ui_print("\nInstall from sdcard complete.\n");
      return 0;
  }
-@@ -509,28 +510,98 @@ static int control_usb_storage(bool on) {
+@@ -498,28 +499,98 @@ static int control_usb_storage(bool on) {
      return num;
  }
  
@@ -183,7 +183,7 @@ index b31de1c..45528c7 100644
  }
  
  int confirm_selection(const char* title, const char* confirm) {
-@@ -1401,11 +1472,44 @@ int can_partition(const char* volume) {
+@@ -1390,11 +1461,44 @@ int can_partition(const char* volume) {
  
  
  #ifdef ENABLE_LOKI
@@ -230,7 +230,7 @@ index b31de1c..45528c7 100644
  int show_advanced_menu() {
      char buf[80];
      int i = 0, j = 0, chosen_item = 0;
-@@ -1437,6 +1541,9 @@ int show_advanced_menu() {
+@@ -1426,6 +1530,9 @@ int show_advanced_menu() {
      list[6] = "show log";
  #ifdef ENABLE_LOKI
      list[7] = "toggle loki support";
@@ -240,7 +240,7 @@ index b31de1c..45528c7 100644
  #endif
  
      char list_prefix[] = "partition ";
-@@ -1519,6 +1626,18 @@ int show_advanced_menu() {
+@@ -1508,6 +1615,18 @@ int show_advanced_menu() {
              case 7:
                  toggle_loki_support();
                  break;
@@ -331,10 +331,10 @@ index 3141a94..984df62 100644
  
  // Header text to display above the main menu.
  extern char* MENU_HEADERS[];
-diff --git a/bootable/recovery/ui.c b/bootable/recovery/ui.c
+diff --git a/ui.c b/ui.c
 index a0dc289..4898e5f 100644
---- a/bootable/recovery/ui.c
-+++ b/bootable/recovery/ui.c
+--- a/ui.c
++++ b/ui.c
 @@ -33,6 +33,7 @@
  #include <cutils/properties.h>
  #include "minui/minui.h"
@@ -1268,6 +1268,3 @@ index 0000000..459174e
 +0x82,0x14,0x83,0x06,0x82,0x05,0x84,0x7f,0x20,0x81,0x7f,0x16,0x81,0x7f,0x7f,
 +0x7f,0x38,0x85,0x18,0x84,0x38,0x82,0x0e,0x82,0x48,0x83,0x7f,0x7f,0x7f,0x7f,
 +0x7f,0x7f,0x7f,0x7f,0x1d,
-+0x00,
-+  }
-+};

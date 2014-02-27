@@ -1,0 +1,204 @@
+From 36d42aa94804343e9c3b871613b4c4d7d4d084af Mon Sep 17 00:00:00 2001
+From: percy-g2 <gahlotpercy@gmail.com>
+Date: Fri, 21 Feb 2014 04:46:55 -0800
+Subject: [PATCH] Revert "Allow devices to specify certain ro. props via
+ TARGET_UNIFIED_DEVICE"
+
+This reverts commit f9cc99306b754f61b1fd68a3735ce2541a9d3253.
+---
+ core/Makefile                            |    7 +---
+ tools/buildinfo.sh                       |   13 +++----
+ tools/releasetools/ota_from_target_files |   62 ++++++++++--------------------
+ 3 files changed, 27 insertions(+), 55 deletions(-)
+
+diff --git a/build/core/Makefile b/build/core/Makefile
+index 772d709..704bad5 100644
+--- a/build/core/Makefile
++++ b/build/core/Makefile
+@@ -210,7 +210,6 @@ $(INSTALLED_BUILD_PROP_TARGET): $(BUILDINFO_SH) $(INTERNAL_BUILD_ID_MAKEFILE) $(
+ 			TARGET_CPU_ABI="$(TARGET_CPU_ABI)" \
+ 			TARGET_CPU_ABI2="$(TARGET_CPU_ABI2)" \
+ 			TARGET_AAPT_CHARACTERISTICS="$(TARGET_AAPT_CHARACTERISTICS)" \
+-			TARGET_UNIFIED_DEVICE="$(TARGET_UNIFIED_DEVICE)" \
+ 			$(PRODUCT_BUILD_PROP_OVERRIDES) \
+ 			BUILD_DISPLAY_ID="$(BUILD_DISPLAY_ID)" \
+ 			BUILD_NUMBER="$(BUILD_NUMBER)" \
+@@ -1432,10 +1431,6 @@ else
+     $(INTERNAL_OTA_PACKAGE_TARGET): override_device := $(TARGET_OTA_ASSERT_DEVICE)
+ endif
+ 
+-ifneq ($(TARGET_UNIFIED_DEVICE),)
+-    $(INTERNAL_OTA_PACKAGE_TARGET): override_prop := --override_prop=true
+-endif
+-
+ $(INTERNAL_OTA_PACKAGE_TARGET): $(BUILT_TARGET_FILES_PACKAGE) $(DISTTOOLS)
+ 	@echo "$(OTA_FROM_TARGET_SCRIPT)" > $(PRODUCT_OUT)/ota_script_path
+ 	@echo "$(override_device)" > $(PRODUCT_OUT)/ota_override_device
+@@ -1445,7 +1440,7 @@ $(INTERNAL_OTA_PACKAGE_TARGET): $(BUILT_TARGET_FILES_PACKAGE) $(DISTTOOLS)
+ 	   -p $(HOST_OUT) \
+ 	   -k $(KEY_CERT_PAIR) \
+ 	   --backup=$(backuptool) \
+-	   --override_device=$(override_device) $(override_prop) \
++	   --override_device=$(override_device) \
+ 	   $(BUILT_TARGET_FILES_PACKAGE) $@
+ 
+ CM_TARGET_PACKAGE := $(PRODUCT_OUT)/cm-$(CM_VERSION).zip
+diff --git a/build/tools/buildinfo.sh b/build/tools/buildinfo.sh
+index ade348b..6475e64 100755
+--- a/build/tools/buildinfo.sh
++++ b/build/tools/buildinfo.sh
+@@ -15,8 +15,10 @@ echo "ro.build.type=$TARGET_BUILD_TYPE"
+ echo "ro.build.user=$USER"
+ echo "ro.build.host=`hostname`"
+ echo "ro.build.tags=$BUILD_VERSION_TAGS"
++echo "ro.product.model=$PRODUCT_MODEL"
+ echo "ro.product.brand=$PRODUCT_BRAND"
+ echo "ro.product.name=$PRODUCT_NAME"
++echo "ro.product.device=$TARGET_DEVICE"
+ echo "ro.product.board=$TARGET_BOOTLOADER_BOARD_NAME"
+ echo "ro.product.cpu.abi=$TARGET_CPU_ABI"
+ if [ -n "$TARGET_CPU_ABI2" ] ; then
+@@ -34,13 +36,10 @@ echo "ro.board.platform=$TARGET_BOARD_PLATFORM"
+ 
+ echo "# ro.build.product is obsolete; use ro.product.device"
+ echo "ro.build.product=$TARGET_DEVICE"
+-if [ "$TARGET_UNIFIED_DEVICE" == "" ] ; then
+-  echo "ro.product.model=$PRODUCT_MODEL"
+-  echo "ro.product.device=$TARGET_DEVICE"
+-  echo "# Do not try to parse ro.build.description or .fingerprint"
+-  echo "ro.build.description=$PRIVATE_BUILD_DESC"
+-  echo "ro.build.fingerprint=$BUILD_FINGERPRINT"
+-fi
++
++echo "# Do not try to parse ro.build.description or .fingerprint"
++echo "ro.build.description=$PRIVATE_BUILD_DESC"
++echo "ro.build.fingerprint=$BUILD_FINGERPRINT"
+ echo "ro.build.characteristics=$TARGET_AAPT_CHARACTERISTICS"
+ 
+ echo "ro.cm.device=$CM_DEVICE"
+diff --git a/build/tools/releasetools/ota_from_target_files b/build/tools/releasetools/ota_from_target_files
+index f662f96..f1617b1 100755
+--- a/build/tools/releasetools/ota_from_target_files
++++ b/build/tools/releasetools/ota_from_target_files
+@@ -59,10 +59,6 @@ Usage:  ota_from_target_files [flags] input_target_files output_ota_package
+   --override_device <device>
+       Override device-specific asserts. Can be a comma-separated list.
+ 
+-  --override_prop <boolean>
+-      Override build.prop items with custom vendor init.
+-      Enabled when TARGET_UNIFIED_DEVICE is defined in BoardConfig
+-
+ """
+ 
+ import sys
+@@ -101,7 +97,6 @@ OPTIONS.aslr_mode = True
+ OPTIONS.worker_threads = 3
+ OPTIONS.backuptool = False
+ OPTIONS.override_device = 'auto'
+-OPTIONS.override_prop = False
+ 
+ def MostPopularKey(d, default):
+   """Given a dict, return the key corresponding to the largest
+@@ -356,10 +351,7 @@ def SignOutput(temp_zip_name, output_zip_name):
+ 
+ def AppendAssertions(script, info_dict):
+   if OPTIONS.override_device == "auto":
+-    if OPTIONS.override_prop:
+-      device = GetBuildProp("ro.build.product", info_dict)
+-    else:
+-      device = GetBuildProp("ro.product.device", info_dict)
++    device = GetBuildProp("ro.product.device", info_dict)
+   else:
+     device = OPTIONS.override_device
+   script.AssertDevice(device)
+@@ -425,18 +417,13 @@ def WriteFullOTAPackage(input_zip, output_zip):
+   # change very often.
+   script = edify_generator.EdifyGenerator(3, OPTIONS.info_dict)
+ 
+-  if OPTIONS.override_prop:
+-    metadata = {"post-timestamp": GetBuildProp("ro.build.date.utc",
+-                                               OPTIONS.info_dict),
+-                }
+-  else:
+-    metadata = {"post-build": GetBuildProp("ro.build.fingerprint",
+-                                           OPTIONS.info_dict),
+-                "pre-device": GetBuildProp("ro.product.device",
+-                                           OPTIONS.info_dict),
+-                "post-timestamp": GetBuildProp("ro.build.date.utc",
+-                                               OPTIONS.info_dict),
+-                }
++  metadata = {"post-build": GetBuildProp("ro.build.fingerprint",
++                                         OPTIONS.info_dict),
++              "pre-device": GetBuildProp("ro.product.device",
++                                         OPTIONS.info_dict),
++              "post-timestamp": GetBuildProp("ro.build.date.utc",
++                                             OPTIONS.info_dict),
++              }
+ 
+   device_specific = common.DeviceSpecificParams(
+       input_zip=input_zip,
+@@ -549,16 +536,11 @@ def WriteIncrementalOTAPackage(target_zip, source_zip, output_zip):
+   script = edify_generator.EdifyGenerator(source_version,
+                                           OPTIONS.target_info_dict)
+ 
+-  if OPTIONS.override_prop:
+-    metadata = {"post-timestamp": GetBuildProp("ro.build.date.utc",
+-                                               OPTIONS.target_info_dict),
+-                }
+-  else:
+-    metadata = {"pre-device": GetBuildProp("ro.product.device",
+-                                           OPTIONS.source_info_dict),
+-                "post-timestamp": GetBuildProp("ro.build.date.utc",
+-                                               OPTIONS.target_info_dict),
+-                }
++  metadata = {"pre-device": GetBuildProp("ro.product.device",
++                                         OPTIONS.source_info_dict),
++              "post-timestamp": GetBuildProp("ro.build.date.utc",
++                                             OPTIONS.target_info_dict),
++              }
+ 
+   device_specific = common.DeviceSpecificParams(
+       source_zip=source_zip,
+@@ -627,14 +609,13 @@ def WriteIncrementalOTAPackage(target_zip, source_zip, output_zip):
+       patch_list.append((sf.name, tf, sf, tf.size, common.sha1(d).hexdigest()))
+       largest_source_size = max(largest_source_size, sf.size)
+ 
+-  if not OPTIONS.override_prop:
+-    source_fp = GetBuildProp("ro.build.fingerprint", OPTIONS.source_info_dict)
+-    target_fp = GetBuildProp("ro.build.fingerprint", OPTIONS.target_info_dict)
+-    metadata["pre-build"] = source_fp
+-    metadata["post-build"] = target_fp
++  source_fp = GetBuildProp("ro.build.fingerprint", OPTIONS.source_info_dict)
++  target_fp = GetBuildProp("ro.build.fingerprint", OPTIONS.target_info_dict)
++  metadata["pre-build"] = source_fp
++  metadata["post-build"] = target_fp
+ 
+-    script.Mount("/system")
+-    script.AssertSomeFingerprint(source_fp, target_fp)
++  script.Mount("/system")
++  script.AssertSomeFingerprint(source_fp, target_fp)
+ 
+   source_boot = common.GetBootableImage(
+       "/tmp/boot.img", "boot.img", OPTIONS.source_tmp, "BOOT",
+@@ -866,8 +847,6 @@ def main(argv):
+       OPTIONS.backuptool = bool(a.lower() == 'true')
+     elif o in ("--override_device"):
+       OPTIONS.override_device = a
+-    elif o in ("--override_prop"):
+-      OPTIONS.override_prop = bool(a.lower() == 'true')
+     else:
+       return False
+     return True
+@@ -883,8 +862,7 @@ def main(argv):
+                                               "worker_threads=",
+                                               "aslr_mode=",
+                                               "backup=",
+-                                              "override_device=",
+-                                              "override_prop="],
++                                              "override_device="],
+                              extra_option_handler=option_handler)
+ 
+   if len(args) != 2:
+-- 
+1.7.9.5
+
