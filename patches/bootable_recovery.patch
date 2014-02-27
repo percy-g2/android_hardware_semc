@@ -331,10 +331,10 @@ index 3141a94..984df62 100644
  
  // Header text to display above the main menu.
  extern char* MENU_HEADERS[];
-diff --git a/ui.c b/ui.c
+diff --git a/bootable/recovery/ui.c b/bootable/recovery/ui.c
 index a0dc289..4898e5f 100644
---- a/ui.c
-+++ b/ui.c
+--- a/bootable/recovery/ui.c
++++ b/bootable/recovery/ui.c
 @@ -33,6 +33,7 @@
  #include <cutils/properties.h>
  #include "minui/minui.h"
