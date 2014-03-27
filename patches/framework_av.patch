@@ -1,8 +1,44 @@
+#       modified:   camera/CameraParameters.cpp
+#       modified:   include/camera/CameraParameters.h
+#       modified:   include/media/AudioParameter.h
+#       modified:   include/media/AudioRecord.h
+#       modified:   include/media/AudioSystem.h
+#       modified:   include/media/AudioTrack.h
+#       modified:   include/media/IAudioFlinger.h
+#       modified:   include/media/IAudioPolicyService.h
+#       modified:   include/media/stagefright/ColorConverter.h
+#       modified:   include/media/stagefright/MediaDefs.h
+#       modified:   include/media/stagefright/OMXCodec.h
+#       modified:   include/private/media/AudioTrackShared.h
+#       modified:   media/libmedia/AudioParameter.cpp
+#       modified:   media/libmedia/AudioRecord.cpp
+#       modified:   media/libmedia/AudioSystem.cpp
+#       modified:   media/libmedia/AudioTrack.cpp
+#       modified:   media/libmedia/IAudioFlinger.cpp
+#       modified:   media/libmedia/IAudioPolicyService.cpp
+#       modified:   media/libnbaio/AudioStreamOutSink.cpp
+#       modified:   media/libstagefright/ACodec.cpp
+#       modified:   media/libstagefright/CameraSource.cpp
+#       modified:   media/libstagefright/MediaDefs.cpp
+#       modified:   media/libstagefright/OMXCodec.cpp
+#       modified:   media/libstagefright/SurfaceMediaSource.cpp
+#       modified:   media/libstagefright/colorconversion/ColorConverter.cpp
+#       modified:   media/libstagefright/omx/SoftOMXPlugin.cpp
+#       modified:   services/audioflinger/Android.mk
+#       modified:   services/audioflinger/AudioFlinger.cpp
+#       modified:   services/audioflinger/AudioFlinger.h
+#       modified:   services/audioflinger/AudioPolicyService.cpp
+#       modified:   services/audioflinger/AudioPolicyService.h
+#       modified:   services/audioflinger/Effects.h
+#       modified:   services/audioflinger/PlaybackTracks.h
+#       modified:   services/audioflinger/Threads.cpp
+#       modified:   services/audioflinger/Threads.h
+#       modified:   services/camera/libcameraservice/device1/CameraHardwareInterface.h
 diff --git a/frameworks/av/camera/CameraParameters.cpp b/frameworks/av/camera/CameraParameters.cpp
-index 18838c7..6b51450 100644
+index bb8cc75..ca9322e 100644
 --- a/frameworks/av/camera/CameraParameters.cpp
 +++ b/frameworks/av/camera/CameraParameters.cpp
-@@ -516,6 +516,33 @@ void CameraParameters::setOrientation(int orientation)
+@@ -522,6 +522,33 @@ void CameraParameters::setOrientation(int orientation)
  const char CameraParameters::LIGHTFX_LOWLIGHT[] = "low-light";
  const char CameraParameters::LIGHTFX_HDR[] = "high-dynamic-range";
  
@@ -36,7 +72,7 @@ index 18838c7..6b51450 100644
  CameraParameters::CameraParameters()
                  : mMap()
  {
-@@ -577,6 +604,11 @@ void CameraParameters::unflatten(const String8 &params)
+@@ -583,6 +610,11 @@ void CameraParameters::unflatten(const String8 &params)
      }
  }
  
@@ -49,10 +85,10 @@ index 18838c7..6b51450 100644
  void CameraParameters::set(const char *key, const char *value)
  {
 diff --git a/frameworks/av/include/camera/CameraParameters.h b/frameworks/av/include/camera/CameraParameters.h
-index 439f71d..d14d249 100644
+index 2c069d0..d84b654 100644
 --- a/frameworks/av/include/camera/CameraParameters.h
 +++ b/frameworks/av/include/camera/CameraParameters.h
-@@ -1062,6 +1062,38 @@ public:
+@@ -1042,6 +1042,38 @@ public:
      void getSupportedHfrSizes(Vector<Size> &sizes) const;
  #endif
  
@@ -199,7 +235,7 @@ index 1c23e7c..0874649 100644
  
  };  // namespace android
 diff --git a/frameworks/av/include/media/AudioTrack.h b/frameworks/av/include/media/AudioTrack.h
-index 6537eaa..fc03c03 100644
+index 79daaba..a7e6770 100644
 --- a/frameworks/av/include/media/AudioTrack.h
 +++ b/frameworks/av/include/media/AudioTrack.h
 @@ -64,6 +64,9 @@ public:
@@ -212,7 +248,7 @@ index 6537eaa..fc03c03 100644
          EVENT_NEW_IAUDIOTRACK = 6,  // IAudioTrack was re-created, either due to re-routing and
                                      // voluntary invalidation by mediaserver, or mediaserver crash.
          EVENT_STREAM_END = 7,       // Sent after all the buffers queued in AF and HW are played
-@@ -668,6 +671,11 @@ protected:
+@@ -665,6 +668,11 @@ protected:
              // FIXME enum is faster than strcmp() for parameter 'from'
              status_t restoreTrack_l(const char *from);
  
@@ -224,7 +260,7 @@ index 6537eaa..fc03c03 100644
              bool     isOffloaded() const
                  { return (mFlags & AUDIO_OUTPUT_FLAG_COMPRESS_OFFLOAD) != 0; }
  
-@@ -757,6 +765,10 @@ protected:
+@@ -754,6 +762,10 @@ protected:
      int                     mPreviousPriority;          // before start()
      SchedPolicy             mPreviousSchedulingGroup;
      bool                    mAwaitBoost;    // thread should wait for priority boost before running
@@ -298,48 +334,6 @@ index 09b9ea6..460efb4 100644
      virtual status_t startInput(audio_io_handle_t input) = 0;
      virtual status_t stopInput(audio_io_handle_t input) = 0;
      virtual void releaseInput(audio_io_handle_t input) = 0;
-diff --git a/frameworks/av/include/media/MediaProfiles.h b/frameworks/av/include/media/MediaProfiles.h
-index 890c200..ec3eb9b 100644
---- a/frameworks/av/include/media/MediaProfiles.h
-+++ b/frameworks/av/include/media/MediaProfiles.h
-@@ -156,9 +156,6 @@ public:
-      * enc.vid.bps.max - max bit rate in bits per second
-      * enc.vid.fps.min - min frame rate in frames per second
-      * enc.vid.fps.max - max frame rate in frames per second
--     * enc.vid.hfr.width.max - max hfr video frame width
--     * enc.vid.hfr.height.max - max hfr video frame height
--     * enc.vid.hfr.mode.max - max hfr mode
-      */
-     int getVideoEncoderParamByName(const char *name, video_encoder codec) const;
- 
-@@ -323,16 +320,12 @@ private:
-                         int minBitRate, int maxBitRate,
-                         int minFrameWidth, int maxFrameWidth,
-                         int minFrameHeight, int maxFrameHeight,
--                        int minFrameRate, int maxFrameRate,
--                        int maxHFRFrameWidth, int maxHFRFrameHeight,
--                        int maxHFRMode)
-+                        int minFrameRate, int maxFrameRate)
-             : mCodec(codec),
-               mMinBitRate(minBitRate), mMaxBitRate(maxBitRate),
-               mMinFrameWidth(minFrameWidth), mMaxFrameWidth(maxFrameWidth),
-               mMinFrameHeight(minFrameHeight), mMaxFrameHeight(maxFrameHeight),
--              mMinFrameRate(minFrameRate), mMaxFrameRate(maxFrameRate),
--              mMaxHFRFrameWidth(maxHFRFrameWidth), mMaxHFRFrameHeight(maxHFRFrameHeight),
--              mMaxHFRMode(maxHFRMode) {}
-+              mMinFrameRate(minFrameRate), mMaxFrameRate(maxFrameRate) {}
- 
-          ~VideoEncoderCap() {}
- 
-@@ -341,8 +334,6 @@ private:
-         int mMinFrameWidth, mMaxFrameWidth;
-         int mMinFrameHeight, mMaxFrameHeight;
-         int mMinFrameRate, mMaxFrameRate;
--        int mMaxHFRFrameWidth, mMaxHFRFrameHeight;
--        int mMaxHFRMode;
-     };
- 
-     struct AudioEncoderCap {
 diff --git a/frameworks/av/include/media/stagefright/ColorConverter.h b/frameworks/av/include/media/stagefright/ColorConverter.h
 index 85ba920..014fc7a 100644
 --- a/frameworks/av/include/media/stagefright/ColorConverter.h
@@ -376,7 +370,7 @@ index 170e587..169dec6 100644
  extern const char *MEDIA_MIMETYPE_AUDIO_AMR_NB;
  extern const char *MEDIA_MIMETYPE_AUDIO_AMR_WB;
 diff --git a/frameworks/av/include/media/stagefright/OMXCodec.h b/frameworks/av/include/media/stagefright/OMXCodec.h
-index 8ad8e8c..c9de0c6 100644
+index eb18470..41e51f2 100644
 --- a/frameworks/av/include/media/stagefright/OMXCodec.h
 +++ b/frameworks/av/include/media/stagefright/OMXCodec.h
 @@ -86,6 +86,10 @@ struct OMXCodec : public MediaSource,
@@ -391,7 +385,7 @@ index 8ad8e8c..c9de0c6 100644
          kNeedsFlushBeforeDisable              = 1,
          kWantsNALFragments                    = 2,
 @@ -107,6 +111,9 @@ struct OMXCodec : public MediaSource,
- #ifdef QCOM_HARDWARE
+         kRequiresGlobalFlush                  = 0x20000000, // 2^29
          kRequiresWMAProComponent              = 0x40000000, //2^30
  #endif
 +#ifdef STE_HARDWARE
@@ -440,10 +434,10 @@ index e4671dc..f7a990b 100644
  const char * const AudioParameter::keySoundCardStatus = AUDIO_PARAMETER_KEY_SND_CARD_STATUS;
  
 diff --git a/frameworks/av/media/libmedia/AudioRecord.cpp b/frameworks/av/media/libmedia/AudioRecord.cpp
-index d8280d3..7468999 100644
+index a5f71b7..9c18a1b 100644
 --- a/frameworks/av/media/libmedia/AudioRecord.cpp
 +++ b/frameworks/av/media/libmedia/AudioRecord.cpp
-@@ -79,8 +79,18 @@ status_t AudioRecord::getMinFrameCount(
+@@ -73,8 +73,18 @@ status_t AudioRecord::getMinFrameCount(
  
  AudioRecord::AudioRecord()
      : mStatus(NO_INIT), mSessionId(0),
@@ -462,7 +456,7 @@ index d8280d3..7468999 100644
  }
  
  AudioRecord::AudioRecord(
-@@ -96,10 +106,21 @@ AudioRecord::AudioRecord(
+@@ -90,10 +100,21 @@ AudioRecord::AudioRecord(
          transfer_type transferType,
          audio_input_flags_t flags)
      : mStatus(NO_INIT), mSessionId(0),
@@ -484,7 +478,7 @@ index d8280d3..7468999 100644
      mStatus = set(inputSource, sampleRate, format, channelMask, frameCount, cbf, user,
              notificationFrames, false /*threadCanCallJava*/, sessionId, transferType);
  }
-@@ -124,6 +145,12 @@ AudioRecord::~AudioRecord()
+@@ -118,6 +139,12 @@ AudioRecord::~AudioRecord()
          IPCThreadState::self()->flushCommands();
          AudioSystem::releaseAudioSessionId(mSessionId);
      }
@@ -497,7 +491,7 @@ index d8280d3..7468999 100644
  }
  
  status_t AudioRecord::set(
-@@ -397,6 +424,12 @@ void AudioRecord::stop()
+@@ -391,6 +418,12 @@ void AudioRecord::stop()
          setpriority(PRIO_PROCESS, 0, mPreviousPriority);
          set_sched_policy(0, mPreviousSchedulingGroup);
      }
@@ -510,7 +504,7 @@ index d8280d3..7468999 100644
  }
  
  bool AudioRecord::stopped() const
-@@ -511,7 +544,14 @@ status_t AudioRecord::openRecord_l(size_t epoch)
+@@ -505,7 +538,14 @@ status_t AudioRecord::openRecord_l(size_t epoch)
      }
  
      audio_io_handle_t input = AudioSystem::getInput(mInputSource, mSampleRate, mFormat,
@@ -638,10 +632,10 @@ index 2b57118..5a076db 100644
  
  status_t AudioSystem::startInput(audio_io_handle_t input)
 diff --git a/frameworks/av/media/libmedia/AudioTrack.cpp b/frameworks/av/media/libmedia/AudioTrack.cpp
-index 48683ed..8297073 100644
+index 08a9cb8..ef81a57 100644
 --- a/frameworks/av/media/libmedia/AudioTrack.cpp
 +++ b/frameworks/av/media/libmedia/AudioTrack.cpp
-@@ -201,6 +201,9 @@ AudioTrack::~AudioTrack()
+@@ -195,6 +195,9 @@ AudioTrack::~AudioTrack()
          AudioSystem::releaseAudioSessionId(mSessionId);
  #endif
      }
@@ -651,7 +645,7 @@ index 48683ed..8297073 100644
  }
  
  status_t AudioTrack::set(
-@@ -1361,6 +1364,11 @@ status_t AudioTrack::obtainBuffer(Buffer* audioBuffer, int32_t waitCount)
+@@ -1301,6 +1304,11 @@ status_t AudioTrack::obtainBuffer(Buffer* audioBuffer, int32_t waitCount)
          audioBuffer->raw = NULL;
          return INVALID_OPERATION;
      }
@@ -663,98 +657,7 @@ index 48683ed..8297073 100644
  
      const struct timespec *requested;
      if (waitCount == -1) {
-@@ -1716,38 +1724,6 @@ nsecs_t AudioTrack::processAudioBuffer(const sp<AudioTrackThread>& thread)
- 
-     mLock.unlock();
- 
--    // perform callbacks while unlocked
--    if (newUnderrun) {
--        mCbf(EVENT_UNDERRUN, mUserData, NULL);
--    }
--    // FIXME we will miss loops if loop cycle was signaled several times since last call
--    //       to processAudioBuffer()
--    if (flags & (CBLK_LOOP_CYCLE | CBLK_LOOP_FINAL)) {
--        mCbf(EVENT_LOOP_END, mUserData, NULL);
--    }
--    if (flags & CBLK_BUFFER_END) {
--        mCbf(EVENT_BUFFER_END, mUserData, NULL);
--    }
--    if (markerReached) {
--        mCbf(EVENT_MARKER, mUserData, &markerPosition);
--    }
--    while (newPosCount > 0) {
--        size_t temp = newPosition;
--        mCbf(EVENT_NEW_POS, mUserData, &temp);
--        newPosition += updatePeriod;
--        newPosCount--;
--    }
--
--    if (mObservedSequence != sequence) {
--        mObservedSequence = sequence;
--        mCbf(EVENT_NEW_IAUDIOTRACK, mUserData, NULL);
--        // for offloaded tracks, just wait for the upper layers to recreate the track
--        if (isOffloaded()) {
--            return NS_INACTIVE;
--        }
--    }
--
--
-     if (waitStreamEnd) {
-         AutoMutex lock(mLock);
- 
-@@ -1765,13 +1741,6 @@ nsecs_t AudioTrack::processAudioBuffer(const sp<AudioTrackThread>& thread)
-         case NO_ERROR:
-         case DEAD_OBJECT:
-         case TIMED_OUT:
--            if (isOffloaded()) {
--                if (mCblk->mFlags & CBLK_INVALID) {
--                    // will trigger EVENT_NEW_IAUDIOTRACK in next iteration
--                    return 0;
--                }
--            }
--
-             mLock.unlock();
-             mCbf(EVENT_STREAM_END, mUserData, NULL);
-             mLock.lock();
-@@ -1787,6 +1756,37 @@ nsecs_t AudioTrack::processAudioBuffer(const sp<AudioTrackThread>& thread)
-         }
-     }
- 
-+    // perform callbacks while unlocked
-+    if (newUnderrun) {
-+        mCbf(EVENT_UNDERRUN, mUserData, NULL);
-+    }
-+    // FIXME we will miss loops if loop cycle was signaled several times since last call
-+    //       to processAudioBuffer()
-+    if (flags & (CBLK_LOOP_CYCLE | CBLK_LOOP_FINAL)) {
-+        mCbf(EVENT_LOOP_END, mUserData, NULL);
-+    }
-+    if (flags & CBLK_BUFFER_END) {
-+        mCbf(EVENT_BUFFER_END, mUserData, NULL);
-+    }
-+    if (markerReached) {
-+        mCbf(EVENT_MARKER, mUserData, &markerPosition);
-+    }
-+    while (newPosCount > 0) {
-+        size_t temp = newPosition;
-+        mCbf(EVENT_NEW_POS, mUserData, &temp);
-+        newPosition += updatePeriod;
-+        newPosCount--;
-+    }
-+
-+    if (mObservedSequence != sequence) {
-+        mObservedSequence = sequence;
-+        mCbf(EVENT_NEW_IAUDIOTRACK, mUserData, NULL);
-+        // for offloaded tracks, just wait for the upper layers to recreate the track
-+        if (isOffloaded()) {
-+            return NS_INACTIVE;
-+        }
-+    }
-+
-     // if inactive, then don't run me again until re-started
-     if (!active) {
-         return NS_INACTIVE;
-@@ -2081,6 +2081,15 @@ uint32_t AudioTrack::getUnderrunFrames() const
+@@ -2013,6 +2021,15 @@ uint32_t AudioTrack::getUnderrunFrames() const
      return mProxy->getUnderrunFrames();
  }
  
@@ -1001,128 +904,6 @@ index 4be3c09..5397875 100644
              reply->writeInt32(static_cast <int>(input));
              return NO_ERROR;
          } break;
-diff --git a/frameworks/av/media/libmedia/MediaProfiles.cpp b/frameworks/av/media/libmedia/MediaProfiles.cpp
-index 2ccbba1..2837bab 100644
---- a/frameworks/av/media/libmedia/MediaProfiles.cpp
-+++ b/frameworks/av/media/libmedia/MediaProfiles.cpp
-@@ -128,8 +128,6 @@ MediaProfiles::logVideoEncoderCap(const MediaProfiles::VideoEncoderCap& cap)
-     ALOGV("frame width: min = %d and max = %d", cap.mMinFrameWidth, cap.mMaxFrameWidth);
-     ALOGV("frame height: min = %d and max = %d", cap.mMinFrameHeight, cap.mMaxFrameHeight);
-     ALOGV("frame rate: min = %d and max = %d", cap.mMinFrameRate, cap.mMaxFrameRate);
--    ALOGV("max HFR width: = %d max HFR height: = %d", cap.mMaxHFRFrameWidth, cap.mMaxHFRFrameHeight);
--    ALOGV("max HFR mode: = %d", cap.mMaxHFRMode);
- }
- 
- /*static*/ void
-@@ -259,30 +257,16 @@ MediaProfiles::createVideoDecoderCap(const char **atts)
- /*static*/ MediaProfiles::VideoEncoderCap*
- MediaProfiles::createVideoEncoderCap(const char **atts)
- {
--    int maxHFRFrameWidth = 0;
--    int maxHFRFrameHeight = 0;
--    int maxHFRMode = 0;
--
--    CHECK(!strcmp("name",               atts[0])  &&
--          !strcmp("enabled",            atts[2])  &&
--          !strcmp("minBitRate",         atts[4])  &&
--          !strcmp("maxBitRate",         atts[6])  &&
--          !strcmp("minFrameWidth",      atts[8])  &&
--          !strcmp("maxFrameWidth",      atts[10]) &&
--          !strcmp("minFrameHeight",     atts[12]) &&
--          !strcmp("maxFrameHeight",     atts[14]) &&
--          !strcmp("minFrameRate",       atts[16]) &&
--          !strcmp("maxFrameRate",       atts[18]));
--
--
--    if (atts[20]) {
--        CHECK(!strcmp("maxHFRFrameWidth",   atts[20]) &&
--          !strcmp("maxHFRFrameHeight",  atts[22]) &&
--          !strcmp("maxHFRMode",         atts[24]));
--        maxHFRFrameWidth = atoi(atts[21]);
--        maxHFRFrameHeight = atoi(atts[23]);
--        maxHFRMode = atoi(atts[25]);
--    }
-+    CHECK(!strcmp("name",           atts[0])  &&
-+          !strcmp("enabled",        atts[2])  &&
-+          !strcmp("minBitRate",     atts[4])  &&
-+          !strcmp("maxBitRate",     atts[6])  &&
-+          !strcmp("minFrameWidth",  atts[8])  &&
-+          !strcmp("maxFrameWidth",  atts[10]) &&
-+          !strcmp("minFrameHeight", atts[12]) &&
-+          !strcmp("maxFrameHeight", atts[14]) &&
-+          !strcmp("minFrameRate",   atts[16]) &&
-+          !strcmp("maxFrameRate",   atts[18]));
- 
-     const size_t nMappings = sizeof(sVideoEncoderNameMap)/sizeof(sVideoEncoderNameMap[0]);
-     const int codec = findTagForName(sVideoEncoderNameMap, nMappings, atts[1]);
-@@ -291,8 +275,7 @@ MediaProfiles::createVideoEncoderCap(const char **atts)
-     MediaProfiles::VideoEncoderCap *cap =
-         new MediaProfiles::VideoEncoderCap(static_cast<video_encoder>(codec),
-             atoi(atts[5]), atoi(atts[7]), atoi(atts[9]), atoi(atts[11]), atoi(atts[13]),
--            atoi(atts[15]), atoi(atts[17]), atoi(atts[19]), maxHFRFrameWidth,
--            maxHFRFrameHeight, maxHFRMode);
-+            atoi(atts[15]), atoi(atts[17]), atoi(atts[19]));
-     logVideoEncoderCap(*cap);
-     return cap;
- }
-@@ -677,14 +660,14 @@ MediaProfiles::getInstance()
- MediaProfiles::createDefaultH263VideoEncoderCap()
- {
-     return new MediaProfiles::VideoEncoderCap(
--        VIDEO_ENCODER_H263, 192000, 420000, 176, 352, 144, 288, 1, 20, 0, 0, 0);
-+        VIDEO_ENCODER_H263, 192000, 420000, 176, 352, 144, 288, 1, 20);
- }
- 
- /*static*/ MediaProfiles::VideoEncoderCap*
- MediaProfiles::createDefaultM4vVideoEncoderCap()
- {
-     return new MediaProfiles::VideoEncoderCap(
--        VIDEO_ENCODER_MPEG_4_SP, 192000, 420000, 176, 352, 144, 288, 1, 20, 0, 0, 0);
-+        VIDEO_ENCODER_MPEG_4_SP, 192000, 420000, 176, 352, 144, 288, 1, 20);
- }
- 
- 
-@@ -1029,9 +1012,6 @@ int MediaProfiles::getVideoEncoderParamByName(const char *name, video_encoder co
-     if (!strcmp("enc.vid.bps.max", name)) return mVideoEncoders[index]->mMaxBitRate;
-     if (!strcmp("enc.vid.fps.min", name)) return mVideoEncoders[index]->mMinFrameRate;
-     if (!strcmp("enc.vid.fps.max", name)) return mVideoEncoders[index]->mMaxFrameRate;
--    if (!strcmp("enc.vid.hfr.width.max", name)) return mVideoEncoders[index]->mMaxHFRFrameWidth;
--    if (!strcmp("enc.vid.hfr.height.max", name)) return mVideoEncoders[index]->mMaxHFRFrameHeight;
--    if (!strcmp("enc.vid.hfr.mode.max", name)) return mVideoEncoders[index]->mMaxHFRMode;
- 
-     ALOGE("The given video encoder param name %s is not found", name);
-     return -1;
-diff --git a/frameworks/av/media/libmediaplayerservice/StagefrightRecorder.cpp b/frameworks/av/media/libmediaplayerservice/StagefrightRecorder.cpp
-index 290ec1d..5d9245f 100644
---- a/frameworks/av/media/libmediaplayerservice/StagefrightRecorder.cpp
-+++ b/frameworks/av/media/libmediaplayerservice/StagefrightRecorder.cpp
-@@ -69,7 +69,6 @@
- 
- #include "ARTPWriter.h"
- #include <cutils/properties.h>
--#include "ExtendedUtils.h"
- 
- #define RES_720P (720*1280)
- #define DUR_30MIN (30*60*1000*1000)
-@@ -1632,8 +1631,8 @@ status_t StagefrightRecorder::setupVideoEncoder(
-     }
- 
- #ifdef QCOM_HARDWARE
--    status_t retVal = ExtendedUtils::HFR::initializeHFR(
--            meta, enc_meta, mMaxFileDurationUs, mVideoEncoder);
-+    status_t retVal = ExtendedUtils::HFR::reCalculateFileDuration(
-+            meta, enc_meta, mMaxFileDurationUs, mFrameRate, mVideoEncoder);
-     if(retVal != OK) {
-         return retVal;
-     }
-@@ -1662,7 +1661,6 @@ status_t StagefrightRecorder::setupVideoEncoder(
-     if (mCaptureTimeLapse) {
-         encoder_flags |= OMXCodec::kOnlySubmitOneInputBufferAtOneTime;
-     }
--    encoder_flags |= ExtendedUtils::getEncoderTypeFlags();
- 
-     sp<MediaSource> encoder = OMXCodec::Create(
-             client.interface(), enc_meta,
 diff --git a/frameworks/av/media/libnbaio/AudioStreamOutSink.cpp b/frameworks/av/media/libnbaio/AudioStreamOutSink.cpp
 index e7cd3ce..62874aa 100644
 --- a/frameworks/av/media/libnbaio/AudioStreamOutSink.cpp
@@ -1138,7 +919,7 @@ index e7cd3ce..62874aa 100644
          return INVALID_OPERATION;
      }
 diff --git a/frameworks/av/media/libstagefright/ACodec.cpp b/frameworks/av/media/libstagefright/ACodec.cpp
-index f92b043..7ae92c7 100755
+index 96c22f9..7ae92c7 100755
 --- a/frameworks/av/media/libstagefright/ACodec.cpp
 +++ b/frameworks/av/media/libstagefright/ACodec.cpp
 @@ -600,8 +600,12 @@ status_t ACodec::configureOutputBuffersFromNativeWindow(
@@ -1175,130 +956,11 @@ index f92b043..7ae92c7 100755
      return mOMX->setParameter(
              mNode, OMX_IndexParamVideoPortFormat,
              &format, sizeof(format));
-@@ -3914,6 +3932,19 @@ bool ACodec::LoadedState::onConfigureComponent(
- 
-     CHECK(mCodec->mNode != NULL);
- 
-+    AString mime;
-+    CHECK(msg->findString("mime", &mime));
-+
-+    status_t err = mCodec->configureCodec(mime.c_str(), msg);
-+
-+    if (err != OK) {
-+        ALOGE("[%s] configureCodec returning error %d",
-+              mCodec->mComponentName.c_str(), err);
-+
-+        mCodec->signalError(OMX_ErrorUndefined, err);
-+        return false;
-+    }
-+
-     sp<RefBase> obj;
-     if (msg->findObject("native-window", &obj)
-             && strncmp("OMX.google.", mCodec->mComponentName.c_str(), 11)) {
-@@ -3928,19 +3959,6 @@ bool ACodec::LoadedState::onConfigureComponent(
-     }
-     CHECK_EQ((status_t)OK, mCodec->initNativeWindow());
- 
--    AString mime;
--    CHECK(msg->findString("mime", &mime));
--
--    status_t err = mCodec->configureCodec(mime.c_str(), msg);
--
--    if (err != OK) {
--        ALOGE("[%s] configureCodec returning error %d",
--              mCodec->mComponentName.c_str(), err);
--
--        mCodec->signalError(OMX_ErrorUndefined, err);
--        return false;
--    }
--
-     {
-         sp<AMessage> notify = mCodec->mNotify->dup();
-         notify->setInt32("what", ACodec::kWhatComponentConfigured);
-diff --git a/frameworks/av/media/libstagefright/Android.mk b/frameworks/av/media/libstagefright/Android.mk
-index 3c56a42..ddd13dc 100644
---- a/frameworks/av/media/libstagefright/Android.mk
-+++ b/frameworks/av/media/libstagefright/Android.mk
-@@ -123,9 +123,6 @@ endif
- ifneq ($(TARGET_QCOM_MEDIA_VARIANT),)
- LOCAL_C_INCLUDES += \
-         $(TOP)/hardware/qcom/media-$(TARGET_QCOM_MEDIA_VARIANT)/mm-core/inc
--ifneq ($(TARGET_QCOM_MEDIA_VARIANT),caf-new)
--    LOCAL_CFLAGS += -DLEGACY_MEDIA
--endif
- else
- LOCAL_C_INCLUDES += \
-         $(TOP)/hardware/qcom/media/mm-core/inc
-diff --git a/frameworks/av/media/libstagefright/AwesomePlayer.cpp b/frameworks/av/media/libstagefright/AwesomePlayer.cpp
-index 05c5088..34e2ac3 100644
---- a/frameworks/av/media/libstagefright/AwesomePlayer.cpp
-+++ b/frameworks/av/media/libstagefright/AwesomePlayer.cpp
-@@ -1196,7 +1196,7 @@ void AwesomePlayer::createAudioPlayer_l()
-             cachedDurationUs > AUDIO_SINK_MIN_DEEP_BUFFER_DURATION_US))) {
-         flags |= AudioPlayer::ALLOW_DEEP_BUFFERING;
-     }
--    if (isStreamingHTTP() || isWidevineContent()) {
-+    if (isStreamingHTTP()) {
-         flags |= AudioPlayer::IS_STREAMING;
-     }
-     if (mVideoSource != NULL) {
-@@ -1772,8 +1772,7 @@ status_t AwesomePlayer::initAudioDecoder() {
-     }
- 
-     mOffloadAudio = canOffloadStream(meta, (mVideoSource != NULL), vMeta,
--                                     (isStreamingHTTP() || isWidevineContent()),
--                                     streamType);
-+                                     isStreamingHTTP(), streamType);
- 
- #ifdef QCOM_DIRECTTRACK
-     int32_t nchannels = 0;
-@@ -1920,8 +1919,7 @@ status_t AwesomePlayer::initAudioDecoder() {
-             format->setInt64(kKeyDuration, durationUs);
-         }
-         mOffloadAudio = canOffloadStream(format, (mVideoSource != NULL), vMeta,
--                                    (isStreamingHTTP() || isWidevineContent()),
--                                     streamType);
-+                                     isStreamingHTTP(), streamType);
-     }
- 
-     if (mAudioSource != NULL) {
-@@ -3308,22 +3306,6 @@ bool AwesomePlayer::isStreamingHTTP() const {
-     return mCachedSource != NULL || mWVMExtractor != NULL;
- }
- 
--bool AwesomePlayer::isWidevineContent() const {
--    if (mWVMExtractor != NULL) {
--        return true;
--    }
--
--    sp<MetaData> fileMeta = mExtractor->getMetaData();
--    const char *containerMime;
--    if (fileMeta != NULL &&
--        fileMeta->findCString(kKeyMIMEType, &containerMime) &&
--        !strcasecmp(containerMime, "video/wvm")) {
--       return true;
--    }
--
--    return false;
--}
--
- status_t AwesomePlayer::dump(int fd, const Vector<String16> &args) const {
-     Mutex::Autolock autoLock(mStatsLock);
- 
 diff --git a/frameworks/av/media/libstagefright/CameraSource.cpp b/frameworks/av/media/libstagefright/CameraSource.cpp
-index 295c0f5..f58c208 100644
+index 768f913..c8abc89 100644
 --- a/frameworks/av/media/libstagefright/CameraSource.cpp
 +++ b/frameworks/av/media/libstagefright/CameraSource.cpp
-@@ -38,8 +38,6 @@
- #include <OMX_TI_IVCommon.h>
- #endif
- 
--#include "include/ExtendedUtils.h"
--
- namespace android {
- 
- static const int64_t CAMERA_SOURCE_TIMEOUT_NS = 3000000000LL;
-@@ -128,10 +126,16 @@ static int32_t getColorFormat(const char* colorFormat) {
+@@ -126,10 +126,16 @@ static int32_t getColorFormat(const char* colorFormat) {
      if (!strcmp(colorFormat, "OMX_TI_COLOR_FormatYUV420PackedSemiPlanar")) {
         return OMX_TI_COLOR_FormatYUV420PackedSemiPlanar;
      }
@@ -1316,7 +978,7 @@ index 295c0f5..f58c208 100644
  
      ALOGE("Uknown color format (%s), please add it to "
           "CameraSource::getColorFormat", colorFormat);
-@@ -577,13 +581,22 @@ status_t CameraSource::initWithCameraAccess(
+@@ -571,13 +577,22 @@ status_t CameraSource::initWithCameraAccess(
  
      // XXX: query camera for the stride and slice height
      // when the capability becomes available.
@@ -1339,386 +1001,6 @@ index 295c0f5..f58c208 100644
      mMeta->setInt32(kKeyFrameRate,   mVideoFrameRate);
  
  #ifdef QCOM_HARDWARE
-diff --git a/frameworks/av/media/libstagefright/ExtendedUtils.cpp b/frameworks/av/media/libstagefright/ExtendedUtils.cpp
-index 66cc289..de4bec7 100644
---- a/frameworks/av/media/libstagefright/ExtendedUtils.cpp
-+++ b/frameworks/av/media/libstagefright/ExtendedUtils.cpp
-@@ -74,84 +74,80 @@ void ExtendedUtils::HFR::setHFRIfEnabled(
-         hfr = 0;
-     }
- 
--#if 0
--    const char *hsr_str = params.get("video-hsr");
--
--    if(hsr_str && !strncmp(hsr_str,"on",2)) {
--         ALOGI("HSR [%d] ON",hfr);
--         meta->setInt32(kKeyHSR, hfr);
--    } else
--#endif
--         meta->setInt32(kKeyHFR, hfr);
-+    meta->setInt32(kKeyHFR, hfr);
- }
- 
--status_t ExtendedUtils::HFR::initializeHFR(
-+status_t ExtendedUtils::HFR::reCalculateFileDuration(
-         sp<MetaData> &meta, sp<MetaData> &enc_meta,
--        int64_t &maxFileDurationUs, video_encoder videoEncoder) {
-+        int64_t &maxFileDurationUs, int32_t frameRate,
-+        video_encoder videoEncoder) {
-     status_t retVal = OK;
--
--#if 0
--    //Check HSR first, if HSR is enable set HSR to kKeyFrameRate
--    int32_t hsr =0;
--    if (meta->findInt32(kKeyHSR, &hsr)) {
--        ALOGI("HSR found %d, set this to encoder frame rate",hsr);
--        enc_meta->setInt32(kKeyFrameRate, hsr);
--        return retVal;
--    }
--#endif
--
-     int32_t hfr = 0;
- 
-     if (!meta->findInt32(kKeyHFR, &hfr)) {
-         ALOGW("hfr not found, default to 0");
-     }
- 
--    enc_meta->setInt32(kKeyHFR, hfr);
--
--    if (hfr == 0) {
--        return retVal;
-+    if (hfr && frameRate) {
-+        maxFileDurationUs = maxFileDurationUs * (hfr/frameRate);
-     }
- 
-+    enc_meta->setInt32(kKeyHFR, hfr);
-     int32_t width = 0, height = 0;
- 
-     CHECK(meta->findInt32(kKeyWidth, &width));
-     CHECK(meta->findInt32(kKeyHeight, &height));
- 
--    char mDeviceName[PROPERTY_VALUE_MAX];
-+    char mDeviceName[100];
-     property_get("ro.board.platform",mDeviceName,"0");
--    if (!strncmp(mDeviceName, "msm8974", 7) ||
--        !strncmp(mDeviceName, "apq8064", 7) ||
--        !strncmp(mDeviceName, "apq8084", 7)) {
--        if ((width * height * hfr > 1920*1088*120)) {
--            ALOGE("HFR mode is supported only upto 1080p resolution");
-+    if (!strncmp(mDeviceName, "msm7627a", 8)) {
-+        if (hfr && (width * height > 432*240)) {
-+            ALOGE("HFR mode is supported only upto WQVGA resolution");
-             return INVALID_OPERATION;
-         }
--    } else if (!strncmp(mDeviceName, "msm8610", 7)) {
--        if ((width * height * hfr > 320*240*120)) {
--            ALOGE("HFR mode is supported only upto QVGA resolution");
-+    } else if (!strncmp(mDeviceName, "msm8974", 7) ||
-+               !strncmp(mDeviceName, "msm8610", 7)) {
-+        if (hfr && (width * height > 1920*1088)) {
-+            ALOGE("HFR mode is supported only upto 1080p resolution");
-             return INVALID_OPERATION;
-         }
--    } else { // includes msm8226
--        if (((videoEncoder != VIDEO_ENCODER_H264)
--                || (width * height * hfr > 800*480*120))) {
-+    } else {
-+        if (hfr && ((videoEncoder != VIDEO_ENCODER_H264) || (width * height > 800*480))) {
-             ALOGE("HFR mode is supported only upto WVGA and H264 codec.");
-             return INVALID_OPERATION;
-         }
-     }
-+    return retVal;
-+}
- 
--    int32_t frameRate = 0, bitRate = 0;
--    CHECK(meta->findInt32(kKeyFrameRate, &frameRate));
--    CHECK(enc_meta->findInt32(kKeyBitRate, &bitRate));
-+void ExtendedUtils::HFR::reCalculateTimeStamp(
-+        sp<MetaData> &meta, int64_t &timestampUs) {
-+    int32_t frameRate = 0, hfr = 0;
-+    if (!(meta->findInt32(kKeyFrameRate, &frameRate))) {
-+        return;
-+    }
- 
--    if (frameRate) {
--        bitRate = (hfr * bitRate) / frameRate;
--        int32_t hfrRatio = hfr/frameRate;
--        enc_meta->setInt32(kKeyBitRate, bitRate);
--        enc_meta->setInt32(kKeyFrameRate, hfr);
--        enc_meta->setInt32(kKeyHFR, hfrRatio);
-+    if (!(meta->findInt32(kKeyHFR, &hfr))) {
-+        return;
-     }
- 
--    return retVal;
-+    if (hfr && frameRate) {
-+        timestampUs = (hfr * timestampUs) / frameRate;
-+    }
-+}
-+
-+void ExtendedUtils::HFR::reCalculateHFRParams(
-+        const sp<MetaData> &meta, int32_t &frameRate,
-+        int32_t &bitRate) {
-+    int32_t hfr = 0;
-+    if (!(meta->findInt32(kKeyHFR, &hfr))) {
-+        return;
-+    }
-+
-+    if (hfr && frameRate) {
-+        bitRate = (hfr * bitRate) / frameRate;
-+        frameRate = hfr;
-+    }
- }
- 
- void ExtendedUtils::HFR::copyHFRParams(
-@@ -164,13 +160,6 @@ void ExtendedUtils::HFR::copyHFRParams(
-     outputFormat->setInt32(kKeyFrameRate, frameRate);
- }
- 
--int32_t ExtendedUtils::HFR::getHFRRatio(
--        const sp<MetaData> &meta) {
--    int32_t hfr = 0;
--    meta->findInt32(kKeyHFR, &hfr);
--    return hfr ? hfr : 1;
--}
--
- bool ExtendedUtils::ShellProp::isAudioDisabled(bool isEncoder) {
-     bool retVal = false;
-     char disableAudio[PROPERTY_VALUE_MAX];
-@@ -542,41 +531,6 @@ bool ExtendedUtils::checkIsThumbNailMode(const uint32_t flags, char* componentNa
-     return isInThumbnailMode;
- }
- 
--void ExtendedUtils::helper_Mpeg4ExtractorCheckAC3EAC3(MediaBuffer *buffer,
--                                                        sp<MetaData> &format,
--                                                        size_t size) {
--    bool mMakeBigEndian = false;
--    const char *mime;
--
--    if (format->findCString(kKeyMIMEType, &mime)
--            && (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_AC3) ||
--            !strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_EAC3))) {
--        mMakeBigEndian = true;
--    }
--    if (mMakeBigEndian && *((uint8_t *)buffer->data())==0x0b &&
--            *((uint8_t *)buffer->data()+1)==0x77 ) {
--        size_t count = 0;
--        for(count=0;count<size;count+=2) { // size is always even bytes in ac3/ec3 read
--            uint8_t tmp = *((uint8_t *)buffer->data() + count);
--            *((uint8_t *)buffer->data() + count) = *((uint8_t *)buffer->data()+count+1);
--            *((uint8_t *)buffer->data() + count+1) = tmp;
--        }
--    }
--}
--
--int32_t ExtendedUtils::getEncoderTypeFlags() {
--    int32_t flags = 0;
--
--    char mDeviceName[PROPERTY_VALUE_MAX];
--    property_get("ro.board.platform",mDeviceName,"0");
--    if (!strncmp(mDeviceName, "msm8610", 7) ||
--        !strncmp(mDeviceName, "msm8226", 7)) {
--        flags |= OMXCodec::kHardwareCodecsOnly;
--    }
--    return flags;
--
--}
--
- void ExtendedUtils::prefetchSecurePool(const char *uri)
- {
-     if (!strncasecmp("widevine://", uri, 11)) {
-@@ -671,22 +625,27 @@ void ExtendedUtils::HFR::setHFRIfEnabled(
-         const CameraParameters& params, sp<MetaData> &meta) {
- }
- 
--status_t ExtendedUtils::HFR::initializeHFR(
-+status_t ExtendedUtils::HFR::reCalculateFileDuration(
-         sp<MetaData> &meta, sp<MetaData> &enc_meta,
--        int64_t &maxFileDurationUs, video_encoder videoEncoder) {
-+        int64_t &maxFileDurationUs, int32_t frameRate,
-+        video_encoder videoEncoder) {
-     return OK;
- }
- 
-+void ExtendedUtils::HFR::reCalculateTimeStamp(
-+        sp<MetaData> &meta, int64_t &timestampUs) {
-+}
-+
-+void ExtendedUtils::HFR::reCalculateHFRParams(
-+        const sp<MetaData> &meta, int32_t &frameRate,
-+        int32_t &bitrate) {
-+}
-+
- void ExtendedUtils::HFR::copyHFRParams(
-         const sp<MetaData> &inputFormat,
-         sp<MetaData> &outputFormat) {
- }
- 
--int32_t ExtendedUtils::HFR::getHFRRatio(
--        const sp<MetaData> &meta) {
--        return 0;
--}
--
- bool ExtendedUtils::ShellProp::isAudioDisabled(bool isEncoder) {
-     return false;
- }
-@@ -748,15 +707,6 @@ bool ExtendedUtils::checkIsThumbNailMode(const uint32_t flags, char* componentNa
-     return false;
- }
- 
--void ExtendedUtils::helper_Mpeg4ExtractorCheckAC3EAC3(MediaBuffer *buffer,
--                                                        sp<MetaData> &format,
--                                                        size_t size) {
--}
--
--int32_t ExtendedUtils::getEncoderTypeFlags() {
--    return 0;
--}
--
- void ExtendedUtils::prefetchSecurePool(int fd) {}
- 
- void ExtendedUtils::prefetchSecurePool(const char *uri) {}
-diff --git a/frameworks/av/media/libstagefright/MPEG4Extractor.cpp b/frameworks/av/media/libstagefright/MPEG4Extractor.cpp
-index 843819f..a446574 100644
---- a/frameworks/av/media/libstagefright/MPEG4Extractor.cpp
-+++ b/frameworks/av/media/libstagefright/MPEG4Extractor.cpp
-@@ -3289,10 +3289,6 @@ status_t MPEG4Source::read(
- 
-                 return ERROR_IO;
-             }
--#ifdef ENABLE_AV_ENHANCEMENTS
--            //for AC3/EAC3 detection
--            ExtendedUtils::helper_Mpeg4ExtractorCheckAC3EAC3(mBuffer, mFormat, size);
--#endif
-             CHECK(mBuffer != NULL);
-             mBuffer->set_range(0, size);
-             mBuffer->meta_data()->clear();
-diff --git a/frameworks/av/media/libstagefright/MPEG4Writer.cpp b/frameworks/av/media/libstagefright/MPEG4Writer.cpp
-index c9a33e8..0314e64 100644
---- a/frameworks/av/media/libstagefright/MPEG4Writer.cpp
-+++ b/frameworks/av/media/libstagefright/MPEG4Writer.cpp
-@@ -39,6 +39,7 @@
- #include <unistd.h>
- 
- #include "include/ESDS.h"
-+
- #include "include/ExtendedUtils.h"
- 
- namespace android {
-@@ -292,7 +293,6 @@ private:
-     // Simple validation on the codec specific data
-     status_t checkCodecSpecificData() const;
-     int32_t mRotation;
--    int32_t mHFRRatio;
- 
-     void updateTrackSizeEstimate();
-     void addOneStscTableEntry(size_t chunkId, size_t sampleId);
-@@ -512,7 +512,7 @@ int64_t MPEG4Writer::estimateMoovBoxSize(int32_t bitRate) {
- 
-     // If the estimation is wrong, we will pay the price of wasting
-     // some reserved space. This should not happen so often statistically.
--    static const int32_t factor = mUse32BitOffset? 1: 2;
-+    int32_t factor = mUse32BitOffset? 1: 2;
-     static const int64_t MIN_MOOV_BOX_SIZE = 3 * 1024;  // 3 KB
-     static const int64_t MAX_MOOV_BOX_SIZE = (180 * 3000000 * 6LL / 8000);
-     int64_t size = MIN_MOOV_BOX_SIZE;
-@@ -1361,8 +1361,7 @@ MPEG4Writer::Track::Track(
-       mCodecSpecificDataSize(0),
-       mGotAllCodecSpecificData(false),
-       mReachedEOS(false),
--      mRotation(0),
--      mHFRRatio(1) {
-+      mRotation(0) {
-     getCodecSpecificDataFromInputFormatIfPossible();
- 
-     const char *mime;
-@@ -1759,8 +1758,6 @@ status_t MPEG4Writer::Track::start(MetaData *params) {
-     pthread_create(&mThread, &attr, ThreadWrapper, this);
-     pthread_attr_destroy(&attr);
- 
--    mHFRRatio = ExtendedUtils::HFR::getHFRRatio(mMeta);
--
-     return OK;
- }
- 
-@@ -1786,15 +1783,17 @@ status_t MPEG4Writer::Track::stop() {
- 
-     status_t err = (status_t) dummy;
- 
--    ALOGD("Stopping %s track source", mIsAudio? "Audio": "Video");
--    {
--        status_t status = mSource->stop();
--        if (err == OK && status != OK && status != ERROR_END_OF_STREAM) {
--            err = status;
-+    if (!mPaused) {
-+        ALOGD("Stopping %s track source", mIsAudio? "Audio": "Video");
-+        {
-+            status_t status = mSource->stop();
-+            if (err == OK && status != OK && status != ERROR_END_OF_STREAM) {
-+                err = status;
-+            }
-         }
--    }
- 
--    ALOGD("%s track stopped", mIsAudio? "Audio": "Video");
-+        ALOGD("%s track stopped", mIsAudio? "Audio": "Video");
-+    }
-     return err;
- }
- 
-@@ -2269,6 +2268,10 @@ status_t MPEG4Writer::Track::threadEntry() {
-         meta_data->findInt32(kKeyIsSyncFrame, &isSync);
-         CHECK(meta_data->findInt64(kKeyTime, &timestampUs));
- 
-+        if (!mIsAudio) {
-+            ExtendedUtils::HFR::reCalculateTimeStamp(mMeta, timestampUs);
-+        }
-+
- ////////////////////////////////////////////////////////////////////////////////
-         if (mStszTableEntries->count() == 0) {
-             mFirstSampleTimeRealUs = systemTime() / 1000;
-@@ -2291,13 +2294,17 @@ status_t MPEG4Writer::Track::threadEntry() {
-              * Decoding time: decodingTimeUs
-              * Composition time offset = composition time - decoding time
-              */
-+            int64_t tmpCttsOffsetTimeUs;
-             int64_t decodingTimeUs;
-             CHECK(meta_data->findInt64(kKeyDecodingTime, &decodingTimeUs));
-+            ExtendedUtils::HFR::reCalculateTimeStamp(mMeta, decodingTimeUs);
- 
-             decodingTimeUs -= previousPausedDurationUs;
-             cttsOffsetTimeUs =
-                     timestampUs - decodingTimeUs;
--            CHECK_GE(kMaxCttsOffsetTimeUs, decodingTimeUs - timestampUs);
-+            tmpCttsOffsetTimeUs = kMaxCttsOffsetTimeUs;
-+            ExtendedUtils::HFR::reCalculateTimeStamp(mMeta, tmpCttsOffsetTimeUs);
-+            CHECK_GE(tmpCttsOffsetTimeUs, decodingTimeUs - timestampUs);
-             timestampUs = decodingTimeUs;
-             ALOGV("decoding time: %lld and ctts offset time: %lld",
-                 timestampUs, cttsOffsetTimeUs);
-@@ -2642,7 +2649,7 @@ void MPEG4Writer::Track::bufferChunk(int64_t timestampUs) {
- }
- 
- int64_t MPEG4Writer::Track::getDurationUs() const {
--    return mTrackDurationUs * mHFRRatio;
-+    return mTrackDurationUs;
- }
- 
- int64_t MPEG4Writer::Track::getEstimatedTrackSizeBytes() const {
-@@ -2964,10 +2971,8 @@ void MPEG4Writer::Track::writeMdhdBox(uint32_t now) {
-     mOwner->writeInt32(0);             // version=0, flags=0
-     mOwner->writeInt32(now);           // creation time
-     mOwner->writeInt32(now);           // modification time
--
--    int32_t timeScale = mTimeScale / mHFRRatio;
--    mOwner->writeInt32(timeScale);    // media timescale
--    int32_t mdhdDuration = (trakDurationUs * timeScale + 5E5) / 1E6;
-+    mOwner->writeInt32(mTimeScale);    // media timescale
-+    int32_t mdhdDuration = (trakDurationUs * mTimeScale + 5E5) / 1E6;
-     mOwner->writeInt32(mdhdDuration);  // use media timescale
-     // Language follows the three letter standard ISO-639-2/T
-     // 'e', 'n', 'g' for "English", for instance.
 diff --git a/frameworks/av/media/libstagefright/MediaDefs.cpp b/frameworks/av/media/libstagefright/MediaDefs.cpp
 index b5d4e44..2eb5c9e 100644
 --- a/frameworks/av/media/libstagefright/MediaDefs.cpp
@@ -1739,7 +1021,7 @@ index b5d4e44..2eb5c9e 100644
  const char *MEDIA_MIMETYPE_AUDIO_AMR_NB = "audio/3gpp";
  const char *MEDIA_MIMETYPE_AUDIO_AMR_WB = "audio/amr-wb";
 diff --git a/frameworks/av/media/libstagefright/OMXCodec.cpp b/frameworks/av/media/libstagefright/OMXCodec.cpp
-index 202baa7..e84ea1c 100644
+index c6346b7..f68fa57 100644
 --- a/frameworks/av/media/libstagefright/OMXCodec.cpp
 +++ b/frameworks/av/media/libstagefright/OMXCodec.cpp
 @@ -322,6 +322,20 @@ void OMXCodec::findMatchingCodecs(
@@ -1763,7 +1045,7 @@ index 202baa7..e84ea1c 100644
  // static
  uint32_t OMXCodec::getComponentQuirks(
          const MediaCodecList *list, size_t index) {
-@@ -374,6 +388,12 @@ uint32_t OMXCodec::getComponentQuirks(
+@@ -376,6 +390,12 @@ uint32_t OMXCodec::getComponentQuirks(
        quirks |= kInputBufferSizesAreBogus;
      }
  #endif
@@ -1776,40 +1058,7 @@ index 202baa7..e84ea1c 100644
  
  #ifdef QCOM_HARDWARE
      quirks |= ExtendedCodec::getComponentQuirks(list,index);
-@@ -760,15 +780,6 @@ status_t OMXCodec::configureCodec(const sp<MetaData> &meta) {
-                 return err;
-             }
-         } else {
--
--            if (mNativeWindow != NULL
--                && !strncmp(mComponentName, "OMX.", 4)) {
--                status_t err = initNativeWindow();
--                if (err != OK) {
--                    return err;
--                }
--            }
--
- #ifdef QCOM_HARDWARE
-             ExtendedCodec::configureVideoDecoder(
-                     meta, mMIME, mOMX, mFlags, mNode, mComponentName);
-@@ -825,6 +836,16 @@ status_t OMXCodec::configureCodec(const sp<MetaData> &meta) {
-         mQuirks &= ~kOutputBuffersAreUnreadable;
-     }
- 
-+    if (mNativeWindow != NULL
-+        && !mIsEncoder
-+        && !strncasecmp(mMIME, "video/", 6)
-+        && !strncmp(mComponentName, "OMX.", 4)) {
-+        status_t err = initNativeWindow();
-+        if (err != OK) {
-+            return err;
-+        }
-+    }
-+
-     return OK;
- }
- 
-@@ -948,6 +969,9 @@ static size_t getFrameSize(
+@@ -943,6 +963,9 @@ static size_t getFrameSize(
          case OMX_COLOR_FormatYUV420Planar:
          case OMX_COLOR_FormatYUV420SemiPlanar:
          case OMX_TI_COLOR_FormatYUV420PackedSemiPlanar:
@@ -1819,51 +1068,7 @@ index 202baa7..e84ea1c 100644
          /*
          * FIXME: For the Opaque color format, the frame size does not
          * need to be (w*h*3)/2. It just needs to
-@@ -1042,6 +1066,10 @@ status_t OMXCodec::setVideoInputFormat(
-     CHECK(success);
-     CHECK(stride != 0);
- 
-+#ifdef QCOM_HARDWARE
-+    ExtendedUtils::HFR::reCalculateHFRParams(meta, frameRate, bitRate);
-+#endif
-+
-     OMX_VIDEO_CODINGTYPE compressionFormat = OMX_VIDEO_CodingUnused;
-     if (!strcasecmp(MEDIA_MIMETYPE_VIDEO_AVC, mime)) {
-         compressionFormat = OMX_VIDEO_CodingAVC;
-@@ -1302,6 +1330,10 @@ status_t OMXCodec::setupH263EncoderParameters(const sp<MetaData>& meta) {
-     h263type.nAllowedPictureTypes =
-         OMX_VIDEO_PictureTypeI | OMX_VIDEO_PictureTypeP;
- 
-+#ifdef QCOM_HARDWARE
-+    ExtendedUtils::HFR::reCalculateHFRParams(meta, frameRate, bitRate);
-+#endif
-+
-     h263type.nPFrames = setPFramesSpacing(iFramesInterval, frameRate);
-     if (h263type.nPFrames == 0) {
-         h263type.nAllowedPictureTypes = OMX_VIDEO_PictureTypeI;
-@@ -1353,6 +1385,10 @@ status_t OMXCodec::setupMPEG4EncoderParameters(const sp<MetaData>& meta) {
-     mpeg4type.nAllowedPictureTypes =
-         OMX_VIDEO_PictureTypeI | OMX_VIDEO_PictureTypeP;
- 
-+#ifdef QCOM_HARDWARE
-+    ExtendedUtils::HFR::reCalculateHFRParams(meta, frameRate, bitRate);
-+#endif
-+
-     mpeg4type.nPFrames = setPFramesSpacing(iFramesInterval, frameRate);
-     if (mpeg4type.nPFrames == 0) {
-         mpeg4type.nAllowedPictureTypes = OMX_VIDEO_PictureTypeI;
-@@ -1414,6 +1450,10 @@ status_t OMXCodec::setupAVCEncoderParameters(const sp<MetaData>& meta) {
-     h264type.eProfile = static_cast<OMX_VIDEO_AVCPROFILETYPE>(profileLevel.mProfile);
-     h264type.eLevel = static_cast<OMX_VIDEO_AVCLEVELTYPE>(profileLevel.mLevel);
- 
-+#ifdef QCOM_HARDWARE
-+    ExtendedUtils::HFR::reCalculateHFRParams(meta, frameRate, bitRate);
-+#endif
-+
-     // XXX
- #ifdef USE_TI_DUCATI_H264_PROFILE
-     if ((strncmp(mComponentName, "OMX.TI.DUCATI1", 14) != 0)
-@@ -1740,6 +1780,10 @@ void OMXCodec::setComponentRole(
+@@ -1750,6 +1773,10 @@ void OMXCodec::setComponentRole(
              "video_decoder.mpeg4", "video_encoder.mpeg4" },
          { MEDIA_MIMETYPE_VIDEO_H263,
              "video_decoder.h263", "video_encoder.h263" },
@@ -1874,7 +1079,7 @@ index 202baa7..e84ea1c 100644
          { MEDIA_MIMETYPE_VIDEO_VP8,
              "video_decoder.vp8", "video_encoder.vp8" },
          { MEDIA_MIMETYPE_VIDEO_VP9,
-@@ -1832,6 +1876,16 @@ status_t OMXCodec::init() {
+@@ -1842,6 +1869,16 @@ status_t OMXCodec::init() {
      CHECK_EQ((int)mState, (int)LOADED);
  
      status_t err;
@@ -1891,7 +1096,7 @@ index 202baa7..e84ea1c 100644
      if (!(mQuirks & kRequiresLoadedToIdleAfterAllocation)) {
          err = mOMX->sendCommand(mNode, OMX_CommandStateSet, OMX_StateIdle);
          CHECK_EQ(err, (status_t)OK);
-@@ -1891,7 +1945,12 @@ status_t OMXCodec::allocateBuffersOnPort(OMX_U32 portIndex) {
+@@ -1903,7 +1940,12 @@ status_t OMXCodec::allocateBuffersOnPort(OMX_U32 portIndex) {
      }
  
      status_t err = OK;
@@ -1904,7 +1109,7 @@ index 202baa7..e84ea1c 100644
              && portIndex == kPortIndexInput) {
          err = mOMX->storeMetaDataInBuffers(mNode, kPortIndexInput, OMX_TRUE);
          if (err != OK) {
-@@ -2092,7 +2151,11 @@ status_t OMXCodec::allocateOutputBuffersFromNativeWindow() {
+@@ -2104,7 +2146,11 @@ status_t OMXCodec::allocateOutputBuffersFromNativeWindow() {
              mNativeWindow.get(),
              def.format.video.nFrameWidth,
              def.format.video.nFrameHeight,
@@ -1916,7 +1121,7 @@ index 202baa7..e84ea1c 100644
  #else
      OMX_COLOR_FORMATTYPE eColorFormat;
  
-@@ -4682,6 +4745,9 @@ static const char *videoCompressionFormatString(OMX_VIDEO_CODINGTYPE type) {
+@@ -4682,6 +4728,9 @@ static const char *videoCompressionFormatString(OMX_VIDEO_CODINGTYPE type) {
          "OMX_VIDEO_CodingRV",
          "OMX_VIDEO_CodingAVC",
          "OMX_VIDEO_CodingMJPEG",
@@ -2115,67 +1320,6 @@ index 597167f..1c8e789 100644
  uint8_t *ColorConverter::initClip() {
      static const signed kClipMin = -278;
      static const signed kClipMax = 535;
-diff --git a/frameworks/av/media/libstagefright/include/AwesomePlayer.h b/frameworks/av/media/libstagefright/include/AwesomePlayer.h
-index 9727b6e..d0dabbc 100644
---- a/frameworks/av/media/libstagefright/include/AwesomePlayer.h
-+++ b/frameworks/av/media/libstagefright/include/AwesomePlayer.h
-@@ -396,7 +396,6 @@ private:
-     status_t selectTrack(size_t trackIndex, bool select);
- 
-     size_t countTracks() const;
--    bool isWidevineContent() const;
- 
- #ifdef QCOM_DIRECTTRACK
-     bool inSupportedTunnelFormats(const char * mime);
-diff --git a/frameworks/av/media/libstagefright/include/ExtendedUtils.h b/frameworks/av/media/libstagefright/include/ExtendedUtils.h
-index 47b0143..a6b18a1 100644
---- a/frameworks/av/media/libstagefright/include/ExtendedUtils.h
-+++ b/frameworks/av/media/libstagefright/include/ExtendedUtils.h
-@@ -70,19 +70,25 @@ struct ExtendedUtils {
-                 const CameraParameters& params, sp<MetaData> &meta);
- 
-         // recalculate fileduration when hfr is enabled
--        static status_t initializeHFR(
-+        static status_t reCalculateFileDuration(
-                 sp<MetaData> &meta, sp<MetaData> &enc_meta,
--                int64_t &maxFileDurationUs, video_encoder videoEncoder);
-+                int64_t &maxFileDurationUs, int32_t frameRate,
-+                video_encoder videoEncoder);
-+
-+        // compute timestamp when hfr is enabled
-+        static void reCalculateTimeStamp(
-+                sp<MetaData> &meta, int64_t &timestampUs);
-+
-+        // recalculate frameRate and bitrate when hfr is enabled
-+        static void reCalculateHFRParams(
-+                const sp<MetaData> &meta, int32_t &frameRate,
-+                int32_t &bitrate);
- 
-         // Copy HFR params (bitrate,framerate) from output to
-         // to input format, if HFR is enabled
-         static void copyHFRParams(
-                 const sp<MetaData> &inputFormat,
-                 sp<MetaData> &outputFormat);
--
--        // Adjust clip timescale for authoring, if HFR is enabled
--        static int32_t getHFRRatio(
--                const sp<MetaData> &meta);
-     };
- 
-     /*
-@@ -135,12 +141,6 @@ struct ExtendedUtils {
- 
-     static bool checkIsThumbNailMode(const uint32_t flags, char* componentName);
- 
--    //helper function for MPEG4 Extractor to check for AC3/EAC3 contents
--    static void helper_Mpeg4ExtractorCheckAC3EAC3(MediaBuffer *buffer, sp<MetaData> &format,
--                                                   size_t size);
--
--    static int32_t getEncoderTypeFlags();
--
-     static void prefetchSecurePool(int fd);
- 
-     static void prefetchSecurePool(const char *uri);
 diff --git a/frameworks/av/media/libstagefright/omx/SoftOMXPlugin.cpp b/frameworks/av/media/libstagefright/omx/SoftOMXPlugin.cpp
 index d6cde73..0780ad2 100644
 --- a/frameworks/av/media/libstagefright/omx/SoftOMXPlugin.cpp
@@ -2216,10 +1360,10 @@ index 0bc0afc..f4a1773 100644
      AudioFlinger.cpp            \
      Threads.cpp                 \
 diff --git a/frameworks/av/services/audioflinger/AudioFlinger.cpp b/frameworks/av/services/audioflinger/AudioFlinger.cpp
-index 9a40b95..9c86ad7 100644
+index 62df2ed..c0994fe 100644
 --- a/frameworks/av/services/audioflinger/AudioFlinger.cpp
 +++ b/frameworks/av/services/audioflinger/AudioFlinger.cpp
-@@ -1298,6 +1298,20 @@ unsigned int AudioFlinger::getInputFramesLost(audio_io_handle_t ioHandle) const
+@@ -1296,6 +1296,20 @@ unsigned int AudioFlinger::getInputFramesLost(audio_io_handle_t ioHandle) const
      return 0;
  }
  
@@ -2240,7 +1384,7 @@ index 9a40b95..9c86ad7 100644
  status_t AudioFlinger::setVoiceVolume(float value)
  {
      status_t ret = initCheck();
-@@ -1959,7 +1973,11 @@ audio_io_handle_t AudioFlinger::openOutput(audio_module_handle_t module,
+@@ -1951,7 +1965,11 @@ audio_io_handle_t AudioFlinger::openOutput(audio_module_handle_t module,
  
  
          // the first primary output opened designates the primary hw device
@@ -2252,7 +1396,7 @@ index 9a40b95..9c86ad7 100644
              ALOGI("Using module %d has the primary audio interface", module);
              mPrimaryHardwareDev = outHwDev;
              AutoMutex lock(mHardwareLock);
-@@ -2104,11 +2122,50 @@ status_t AudioFlinger::restoreOutput(audio_io_handle_t output)
+@@ -2096,11 +2114,50 @@ status_t AudioFlinger::restoreOutput(audio_io_handle_t output)
      return NO_ERROR;
  }
  
@@ -2303,7 +1447,7 @@ index 9a40b95..9c86ad7 100644
  {
      status_t status;
      RecordThread *thread = NULL;
-@@ -2122,6 +2179,10 @@ audio_io_handle_t AudioFlinger::openInput(audio_module_handle_t module,
+@@ -2114,6 +2171,10 @@ audio_io_handle_t AudioFlinger::openInput(audio_module_handle_t module,
      audio_channel_mask_t reqChannels = config.channel_mask;
      audio_stream_in_t *inStream = NULL;
      AudioHwDevice *inHwDev;
@@ -2314,7 +1458,7 @@ index 9a40b95..9c86ad7 100644
  
      if (pDevices == NULL || *pDevices == 0) {
          return 0;
-@@ -2133,6 +2194,12 @@ audio_io_handle_t AudioFlinger::openInput(audio_module_handle_t module,
+@@ -2125,6 +2186,12 @@ audio_io_handle_t AudioFlinger::openInput(audio_module_handle_t module,
      if (inHwDev == NULL)
          return 0;
  
@@ -2327,7 +1471,7 @@ index 9a40b95..9c86ad7 100644
      audio_hw_device_t *inHwHal = inHwDev->hwDevice();
      audio_io_handle_t id = nextUniqueId();
  
-@@ -2147,17 +2214,33 @@ audio_io_handle_t AudioFlinger::openInput(audio_module_handle_t module,
+@@ -2139,17 +2206,33 @@ audio_io_handle_t AudioFlinger::openInput(audio_module_handle_t module,
                                          &inStream);
  #endif
      ALOGV("openInput() openInputStream returned input %p, SamplingRate %d, Format %d, Channels %x, "
@@ -2361,7 +1505,7 @@ index 9a40b95..9c86ad7 100644
          reqFormat == config.format && config.format == AUDIO_FORMAT_PCM_16_BIT &&
          (config.sample_rate <= 2 * reqSamplingRate) &&
          (getInputChannelCount(config.channel_mask) <= FCC_2) && (getInputChannelCount(reqChannels) <= FCC_2)) {
-@@ -2236,7 +2319,12 @@ audio_io_handle_t AudioFlinger::openInput(audio_module_handle_t module,
+@@ -2228,7 +2311,12 @@ audio_io_handle_t AudioFlinger::openInput(audio_module_handle_t module,
                                    reqChannels,
                                    id,
                                    primaryOutputDevice_l(),
@@ -2374,7 +1518,7 @@ index 9a40b95..9c86ad7 100644
  #ifdef TEE_SINK
                                    , teeSink
  #endif
-@@ -2253,6 +2341,12 @@ audio_io_handle_t AudioFlinger::openInput(audio_module_handle_t module,
+@@ -2245,6 +2333,12 @@ audio_io_handle_t AudioFlinger::openInput(audio_module_handle_t module,
              *pChannelMask = reqChannels;
          }
  
@@ -2387,7 +1531,7 @@ index 9a40b95..9c86ad7 100644
          // notify client processes of the new input creation
          thread->audioConfigChanged_l(AudioSystem::INPUT_OPENED);
          return id;
-@@ -2261,10 +2355,45 @@ audio_io_handle_t AudioFlinger::openInput(audio_module_handle_t module,
+@@ -2253,10 +2347,45 @@ audio_io_handle_t AudioFlinger::openInput(audio_module_handle_t module,
      return 0;
  }
  
@@ -2481,10 +1625,10 @@ index b861e4f..c2f0117 100644
                  bool        masterMute_l() const;
                  audio_module_handle_t loadHwModule_l(const char *name);
 diff --git a/frameworks/av/services/audioflinger/AudioPolicyService.cpp b/frameworks/av/services/audioflinger/AudioPolicyService.cpp
-index 94f4ab7..08eceae 100644
+index ccd14c4..bbeb997 100644
 --- a/frameworks/av/services/audioflinger/AudioPolicyService.cpp
 +++ b/frameworks/av/services/audioflinger/AudioPolicyService.cpp
-@@ -296,7 +296,12 @@ audio_io_handle_t AudioPolicyService::getInput(audio_source_t inputSource,
+@@ -290,7 +290,12 @@ audio_io_handle_t AudioPolicyService::getInput(audio_source_t inputSource,
                                      uint32_t samplingRate,
                                      audio_format_t format,
                                      audio_channel_mask_t channelMask,
@@ -2497,7 +1641,7 @@ index 94f4ab7..08eceae 100644
  {
      if (mpAudioPolicy == NULL) {
          return 0;
-@@ -313,7 +318,11 @@ audio_io_handle_t AudioPolicyService::getInput(audio_source_t inputSource,
+@@ -307,7 +312,11 @@ audio_io_handle_t AudioPolicyService::getInput(audio_source_t inputSource,
      Mutex::Autolock _l(mLock);
      // the audio_in_acoustics_t parameter is ignored by get_input()
      audio_io_handle_t input = mpAudioPolicy->get_input(mpAudioPolicy, inputSource, samplingRate,
@@ -2509,7 +1653,7 @@ index 94f4ab7..08eceae 100644
  
      if (input == 0) {
          return input;
-@@ -1082,6 +1091,14 @@ void AudioPolicyService::AudioCommandThread::insertCommand_l(AudioCommand *comma
+@@ -1067,6 +1076,14 @@ void AudioPolicyService::AudioCommandThread::insertCommand_l(AudioCommand *comma
          for (size_t k = i + 1; k < mAudioCommands.size(); k++) {
              if (mAudioCommands[k] == removedCommands[j]) {
                  ALOGV("suppressing command: %d", mAudioCommands[k]->mCommand);
@@ -2524,7 +1668,7 @@ index 94f4ab7..08eceae 100644
                  mAudioCommands.removeAt(k);
                  break;
              }
-@@ -1164,7 +1181,12 @@ int AudioPolicyService::setVoiceVolume(float volume, int delayMs)
+@@ -1149,7 +1166,12 @@ int AudioPolicyService::setVoiceVolume(float volume, int delayMs)
  {
      return (int)mAudioCommandThread->voiceVolumeCommand(volume, delayMs);
  }
@@ -2538,7 +1682,7 @@ index 94f4ab7..08eceae 100644
  bool AudioPolicyService::isOffloadSupported(const audio_offload_info_t& info)
  {
  #ifdef HAVE_PRE_KITKAT_AUDIO_BLOB
-@@ -1182,6 +1204,7 @@ bool AudioPolicyService::isOffloadSupported(const audio_offload_info_t& info)
+@@ -1167,6 +1189,7 @@ bool AudioPolicyService::isOffloadSupported(const audio_offload_info_t& info)
  
      return mpAudioPolicy->is_offload_supported(mpAudioPolicy, &info);
  }
@@ -2546,7 +1690,7 @@ index 94f4ab7..08eceae 100644
  
  // ----------------------------------------------------------------------------
  // Audio pre-processing configuration
-@@ -1576,7 +1599,12 @@ static audio_io_handle_t aps_open_input(void *service,
+@@ -1561,7 +1584,12 @@ static audio_io_handle_t aps_open_input(void *service,
                                          uint32_t *pSamplingRate,
                                          audio_format_t *pFormat,
                                          audio_channel_mask_t *pChannelMask,
@@ -2559,7 +1703,7 @@ index 94f4ab7..08eceae 100644
  {
      sp<IAudioFlinger> af = AudioSystem::get_audio_flinger();
      if (af == 0) {
-@@ -1584,7 +1612,11 @@ static audio_io_handle_t aps_open_input(void *service,
+@@ -1569,7 +1597,11 @@ static audio_io_handle_t aps_open_input(void *service,
          return 0;
      }
  
@@ -2571,7 +1715,7 @@ index 94f4ab7..08eceae 100644
  }
  
  static audio_io_handle_t aps_open_input_on_module(void *service,
-@@ -1592,7 +1624,12 @@ static audio_io_handle_t aps_open_input_on_module(void *service,
+@@ -1577,7 +1609,12 @@ static audio_io_handle_t aps_open_input_on_module(void *service,
                                                    audio_devices_t *pDevices,
                                                    uint32_t *pSamplingRate,
                                                    audio_format_t *pFormat,
@@ -2584,7 +1728,7 @@ index 94f4ab7..08eceae 100644
  {
      sp<IAudioFlinger> af = AudioSystem::get_audio_flinger();
      if (af == 0) {
-@@ -1600,16 +1637,29 @@ static audio_io_handle_t aps_open_input_on_module(void *service,
+@@ -1585,16 +1622,29 @@ static audio_io_handle_t aps_open_input_on_module(void *service,
          return 0;
      }
  
@@ -2615,10 +1759,10 @@ index 94f4ab7..08eceae 100644
  
  static int aps_set_stream_output(void *service, audio_stream_type_t stream,
 diff --git a/frameworks/av/services/audioflinger/AudioPolicyService.h b/frameworks/av/services/audioflinger/AudioPolicyService.h
-index 577688b..acf6c9c 100644
+index ae053a9..cb64b1c 100644
 --- a/frameworks/av/services/audioflinger/AudioPolicyService.h
 +++ b/frameworks/av/services/audioflinger/AudioPolicyService.h
-@@ -81,7 +81,12 @@ public:
+@@ -80,7 +80,12 @@ public:
                                      uint32_t samplingRate = 0,
                                      audio_format_t format = AUDIO_FORMAT_DEFAULT,
                                      audio_channel_mask_t channelMask = 0,
@@ -2663,7 +1807,7 @@ index 43b77f3..c7c7342 100644
              status_t    attachAuxEffect(int EffectId);
              void        setAuxBuffer(int EffectId, int32_t *buffer);
 diff --git a/frameworks/av/services/audioflinger/Threads.cpp b/frameworks/av/services/audioflinger/Threads.cpp
-index 5d66178..d47bfa7 100644
+index 5b21708..951591e 100644
 --- a/frameworks/av/services/audioflinger/Threads.cpp
 +++ b/frameworks/av/services/audioflinger/Threads.cpp
 @@ -1644,6 +1644,9 @@ void AudioFlinger::PlaybackThread::audioConfigChanged_l(int event, int param) {
@@ -2676,7 +1820,7 @@ index 5d66178..d47bfa7 100644
          param2 = &param;
      case AudioSystem::OUTPUT_CLOSED:
      default:
-@@ -3560,6 +3563,12 @@ bool AudioFlinger::MixerThread::checkForNewParameters_l()
+@@ -3551,6 +3554,12 @@ bool AudioFlinger::MixerThread::checkForNewParameters_l()
              }
          }
  
@@ -2689,7 +1833,7 @@ index 5d66178..d47bfa7 100644
          if (status == NO_ERROR) {
              status = mOutput->stream->common.set_parameters(&mOutput->stream->common,
                                                      keyValuePair.string());
-@@ -4543,7 +4552,12 @@ AudioFlinger::RecordThread::RecordThread(const sp<AudioFlinger>& audioFlinger,
+@@ -4528,7 +4537,12 @@ AudioFlinger::RecordThread::RecordThread(const sp<AudioFlinger>& audioFlinger,
                                           audio_channel_mask_t channelMask,
                                           audio_io_handle_t id,
                                           audio_devices_t outDevice,
@@ -2702,7 +1846,7 @@ index 5d66178..d47bfa7 100644
  #ifdef TEE_SINK
                                           , const sp<NBAIO_Sink>& teeSink
  #endif
-@@ -4560,7 +4574,9 @@ AudioFlinger::RecordThread::RecordThread(const sp<AudioFlinger>& audioFlinger,
+@@ -4545,7 +4559,9 @@ AudioFlinger::RecordThread::RecordThread(const sp<AudioFlinger>& audioFlinger,
  #endif
  {
      snprintf(mName, kNameLength, "AudioIn_%X", id);
@@ -2713,7 +1857,7 @@ index 5d66178..d47bfa7 100644
      readInputParameters();
  }
  
-@@ -5524,6 +5540,14 @@ KeyedVector<int, bool> AudioFlinger::RecordThread::sessionIds() const
+@@ -5509,6 +5525,14 @@ KeyedVector<int, bool> AudioFlinger::RecordThread::sessionIds() const
      return ids;
  }
  
